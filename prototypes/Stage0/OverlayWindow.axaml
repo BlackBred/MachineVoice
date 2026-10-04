@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MachineVoice.Stage0.OverlayWindow"
+        Title="MachineVoice Overlay"
+        WindowDecorations="None"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+  <Border Background="#EE1F1F23"
+          BorderBrush="#33FFFFFF"
+          BorderThickness="1"
+          CornerRadius="24"
+          Padding="18,10"
+          Margin="8">
+    <StackPanel Orientation="Horizontal" Spacing="14">
+      <StackPanel VerticalAlignment="Center" Spacing="2" Width="300">
+        <TextBlock x:Name="TitleText"
+                   Text="Cursor · MachineVoice · этап 0"
+                   FontWeight="SemiBold"
+                   Foreground="White"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="StatusText"
+                   Text="тишина"
+                   FontSize="12"
+                   Foreground="#B0FFFFFF"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="FocusText"
+                   FontSize="11"
+                   Foreground="#80FFFFFF"
+                   TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Button x:Name="SpeakButton" Content="▶︎ Тест" Click="OnSpeak" />
+        <Button x:Name="PauseButton" Content="⏯" Click="OnPause" ToolTip.Tip="Пауза / продолжить" />
+        <Button x:Name="StopButton" Content="⏹" Click="OnStop" ToolTip.Tip="Стоп" />
+        <Button x:Name="HideButton" Content="✕" Click="OnHide" ToolTip.Tip="Скрыть" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>
