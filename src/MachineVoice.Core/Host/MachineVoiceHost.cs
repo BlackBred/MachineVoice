@@ -1,0 +1,101 @@
+using MachineVoice.Protocol;
+
+namespace MachineVoice.Core;
+
+public sealed class MachineVoiceOptions
+{
+    public required string RootDirectory { get; init; }
+    public required ITtsEngine Tts { get; init; }
+    public IQueuePolicy? QueuePolicy { get; init; }
+    public Action<string>? Log { get; init; }
+}
+
+public sealed class MachineVoiceHost : IAsyncDisposable
+{
+    readonly SpeechEngine _engine;
+    readonly IngestServer _ingest;
+    readonly ControlServer _control;
+    int _disposed;
+
+    MachineVoiceHost(SpeechEngine engine, IngestServer ingest, ControlServer control, string root)
+    {
+        _engine = engine;
+        _ingest = ingest;
+        _control = control;
+        RootDirectory = root;
+        IngestSocketPath = Path.Combine(root, AppLayout.IngestSocketName);
+        ControlSocketPath = Path.Combine(root, AppLayout.ControlSocketName);
+    }
+
+    public static string DefaultRootDirectory =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Library",
+            "Application Support",
+            "MachineVoice");
+
+    public string RootDirectory { get; }
+    public string IngestSocketPath { get; }
+    public string ControlSocketPath { get; }
+
+    public static async Task<MachineVoiceHost> StartAsync(MachineVoiceOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.RootDirectory);
+        ArgumentNullException.ThrowIfNull(options.Tts);
+
+        PrepareDirectories(options.RootDirectory);
+        var engine = new SpeechEngine(
+            options.RootDirectory,
+            options.Tts,
+            options.QueuePolicy ?? new FifoQueuePolicy(),
+            options.Log);
+        IngestServer? ingest = null;
+        ControlServer? control = null;
+        try
+        {
+            engine.Start();
+            await engine.ReplayAsync(cancellationToken).ConfigureAwait(false);
+            ingest = new IngestServer(engine, Path.Combine(options.RootDirectory, AppLayout.IngestSocketName), options.Log);
+            control = new ControlServer(engine, Path.Combine(options.RootDirectory, AppLayout.ControlSocketName), options.Log);
+            ingest.Start();
+            control.Start();
+            return new MachineVoiceHost(engine, ingest, control, options.RootDirectory);
+        }
+        catch
+        {
+            if (control is not null)
+                await control.DisposeAsync().ConfigureAwait(false);
+            if (ingest is not null)
+                await ingest.DisposeAsync().ConfigureAwait(false);
+            await engine.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public async Task<IControlClient> ConnectInProcessAsync(CancellationToken cancellationToken = default)
+    {
+        var slot = new ClientSlot();
+        await _engine.AttachAsync(slot, cancellationToken).ConfigureAwait(false);
+        return new InProcessControlClient(_engine, slot);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        await _control.DisposeAsync().ConfigureAwait(false);
+        await _ingest.DisposeAsync().ConfigureAwait(false);
+        await _engine.DisposeAsync().ConfigureAwait(false);
+    }
+
+    static void PrepareDirectories(string root)
+    {
+        var inbox = Path.Combine(root, AppLayout.InboxDirectoryName);
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(inbox);
+        AppLayout.SetPrivateDirectory(root);
+        AppLayout.SetPrivateDirectory(inbox);
+    }
+}

@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/prototypes/" />
+  <Folder Name="/prototypes/Stage0/">
+    <Project Path="prototypes/Stage0/MachineVoice.Stage0.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/MachineVoice.Core/MachineVoice.Core.csproj" />
+    <Project Path="src/MachineVoice.Protocol/MachineVoice.Protocol.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MachineVoice.Core.Tests/MachineVoice.Core.Tests.csproj" />
+  </Folder>
+</Solution>
