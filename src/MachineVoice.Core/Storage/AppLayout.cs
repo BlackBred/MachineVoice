@@ -8,8 +8,12 @@ static class AppLayout
     public const string RejectedDirectoryName = "rejected";
     public const string HistoryFileName = "history.json";
     public const string SettingsFileName = "settings.json";
+    public const string HookScriptName = "hook.sh";
+    public const string CursorTurnsFileName = "cursor-turns.json";
 
     public const UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+    public const UnixFileMode ExecutableFile =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
     public const UnixFileMode PrivateDirectory =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 

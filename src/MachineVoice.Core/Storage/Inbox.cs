@@ -38,12 +38,7 @@ sealed class Inbox
             .ToArray();
     }
 
-    public StoredSubmit Read(string path)
-    {
-        var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize(json, IngestJsonContext.Default.StoredSubmit)
-            ?? throw new InvalidDataException("Empty inbox file.");
-    }
+    public string ReadText(string path) => File.ReadAllText(path);
 
     public void Delete(string path)
     {

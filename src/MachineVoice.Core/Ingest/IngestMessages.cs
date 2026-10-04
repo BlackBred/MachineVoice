@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using MachineVoice.Protocol;
 
@@ -37,6 +38,19 @@ public sealed class IngestResponse
         Type = "rejected",
         Error = error,
     };
+
+    public static IngestResponse Acknowledged() => new()
+    {
+        Type = "accepted",
+    };
+}
+
+sealed class HookEnvelope
+{
+    public int Version { get; init; }
+    public string? Type { get; init; }
+    public string? Source { get; init; }
+    public JsonElement Payload { get; init; }
 }
 
 [JsonSourceGenerationOptions(
@@ -45,7 +59,24 @@ public sealed class IngestResponse
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(StoredSubmit))]
 [JsonSerializable(typeof(IngestResponse))]
+[JsonSerializable(typeof(HookEnvelope))]
 sealed partial class IngestJsonContext : JsonSerializerContext;
+
+static class HookRules
+{
+    public static string? Validate(HookEnvelope envelope)
+    {
+        if (!string.Equals(envelope.Type, "hook", StringComparison.Ordinal))
+            return ProtocolErrors.UnknownCommand;
+        if (envelope.Version != ProtocolVersion.Current)
+            return ProtocolErrors.UnsupportedVersion;
+        if (!string.Equals(envelope.Source?.Trim(), CursorHooks.SourceName, StringComparison.Ordinal))
+            return ProtocolErrors.InvalidArgument;
+        if (envelope.Payload.ValueKind != JsonValueKind.Object)
+            return ProtocolErrors.InvalidMessage;
+        return null;
+    }
+}
 
 static class SubmitRules
 {

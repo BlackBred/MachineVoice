@@ -45,28 +45,58 @@ sealed class IngestServer : IAsyncDisposable
     async Task HandleAsync(Socket client, CancellationToken cancellationToken)
     {
         using var stream = new NetworkStream(client, ownsSocket: false);
-        using var reader = Ndjson.CreateReader(stream);
-        var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(line) || line.Length > Ndjson.MaxLineChars)
+        var first = new byte[1];
+        if (await stream.ReadAsync(first, cancellationToken).ConfigureAwait(false) == 0)
+            return;
+
+        // hook.sh uses curl, which speaks HTTP. Other clients send one NDJSON line.
+        if (first[0] == (byte)'P')
         {
-            await WriteAsync(stream, IngestResponse.Rejected(ProtocolErrors.InvalidMessage), cancellationToken).ConfigureAwait(false);
+            await IngestHttp.HandleAsync(stream, first[0], DispatchAsync, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        IngestResponse response;
+        var prefixed = new PrefixedReadStream(stream, first[0]);
+        using var reader = Ndjson.CreateReader(prefixed);
+        var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        var response = await DispatchLineAsync(line, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(stream, response, cancellationToken).ConfigureAwait(false);
+    }
+
+    async Task<IngestResponse> DispatchLineAsync(string? line, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(line) || line.Length > Ndjson.MaxLineChars)
+            return IngestResponse.Rejected(ProtocolErrors.InvalidMessage);
         try
         {
-            var submit = JsonSerializer.Deserialize(line, IngestJsonContext.Default.StoredSubmit);
-            response = submit is null
-                ? IngestResponse.Rejected(ProtocolErrors.InvalidMessage)
-                : await _engine.SubmitAsync(submit, cancellationToken).ConfigureAwait(false);
+            return await DispatchAsync(line, cancellationToken).ConfigureAwait(false);
         }
         catch (JsonException)
         {
-            response = IngestResponse.Rejected(ProtocolErrors.InvalidMessage);
+            return IngestResponse.Rejected(ProtocolErrors.InvalidMessage);
+        }
+    }
+
+    async Task<IngestResponse> DispatchAsync(string json, CancellationToken cancellationToken)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var type = doc.RootElement.ValueKind == JsonValueKind.Object
+            && doc.RootElement.TryGetProperty("type", out var typeValue)
+            && typeValue.ValueKind == JsonValueKind.String
+                ? typeValue.GetString()
+                : null;
+        if (string.Equals(type, "hook", StringComparison.Ordinal))
+        {
+            var envelope = JsonSerializer.Deserialize(json, IngestJsonContext.Default.HookEnvelope);
+            return envelope is null
+                ? IngestResponse.Rejected(ProtocolErrors.InvalidMessage)
+                : await _engine.SubmitHookAsync(envelope, cancellationToken).ConfigureAwait(false);
         }
 
-        await WriteAsync(stream, response, cancellationToken).ConfigureAwait(false);
+        var submit = JsonSerializer.Deserialize(json, IngestJsonContext.Default.StoredSubmit);
+        return submit is null
+            ? IngestResponse.Rejected(ProtocolErrors.InvalidMessage)
+            : await _engine.SubmitAsync(submit, cancellationToken).ConfigureAwait(false);
     }
 
     static Task WriteAsync(Stream stream, IngestResponse response, CancellationToken cancellationToken)

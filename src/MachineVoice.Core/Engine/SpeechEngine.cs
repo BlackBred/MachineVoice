@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using MachineVoice.Protocol;
 
@@ -8,6 +9,9 @@ sealed class SpeechEngine : IAsyncDisposable
     readonly Inbox _inbox;
     readonly HistoryStore _history;
     readonly SettingsStore _settingsStore;
+    readonly CursorHooks _cursor;
+    readonly CursorTurnStore _turnStore;
+    readonly CursorSession _session = new();
     readonly ITtsEngine _tts;
     readonly IQueuePolicy _policy;
     readonly Action<string>? _log;
@@ -27,11 +31,13 @@ sealed class SpeechEngine : IAsyncDisposable
     Task? _loop;
     int _disposed;
 
-    public SpeechEngine(string root, ITtsEngine tts, IQueuePolicy policy, Action<string>? log)
+    public SpeechEngine(string root, string cursorDirectory, ITtsEngine tts, IQueuePolicy policy, Action<string>? log)
     {
         _inbox = new Inbox(root);
         _history = new HistoryStore(Path.Combine(root, AppLayout.HistoryFileName), log);
         _settingsStore = new SettingsStore(Path.Combine(root, AppLayout.SettingsFileName), log);
+        _cursor = new CursorHooks(cursorDirectory, Path.Combine(root, AppLayout.HookScriptName), CursorHookScript.Content, log);
+        _turnStore = new CursorTurnStore(Path.Combine(root, AppLayout.CursorTurnsFileName), log);
         _tts = tts;
         _policy = policy;
         _log = log;
@@ -47,6 +53,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
         _settings = _settingsStore.Load();
         _mode = _settings.Mode;
+        foreach (var (generation, turn) in _turnStore.Load())
+            _session.Turns[generation] = turn;
         _inbox.DeleteTemps();
         _loop = Task.Run(RunAsync);
     }
@@ -56,6 +64,7 @@ sealed class SpeechEngine : IAsyncDisposable
         {
             foreach (var path in _inbox.List())
                 TryReplay(path);
+            ReplayReadyTurns();
             Advance();
         }, cancellationToken);
 
@@ -63,6 +72,14 @@ sealed class SpeechEngine : IAsyncDisposable
     {
         var ack = new TaskCompletionSource<IngestResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!Post(new SubmitWork(submit, ack)))
+            return Task.FromException<IngestResponse>(new ObjectDisposedException(nameof(SpeechEngine)));
+        return WaitAsync(ack, cancellationToken);
+    }
+
+    public Task<IngestResponse> SubmitHookAsync(HookEnvelope envelope, CancellationToken cancellationToken = default)
+    {
+        var ack = new TaskCompletionSource<IngestResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!Post(new HookWork(envelope, ack)))
             return Task.FromException<IngestResponse>(new ObjectDisposedException(nameof(SpeechEngine)));
         return WaitAsync(ack, cancellationToken);
     }
@@ -142,7 +159,10 @@ sealed class SpeechEngine : IAsyncDisposable
         switch (work)
         {
             case SubmitWork submit:
-                submit.Ack.TrySetResult(AcceptNew(submit.Submit));
+                submit.Ack.TrySetResult(AcceptNew(submit.Submit, start: true));
+                break;
+            case HookWork hook:
+                hook.Ack.TrySetResult(AcceptHook(hook.Envelope, start: true));
                 break;
             case CommandWork command:
                 command.Result.TrySetResult(Execute(command.Command));
@@ -167,6 +187,9 @@ sealed class SpeechEngine : IAsyncDisposable
             case SubmitWork submit:
                 submit.Ack.TrySetException(ex);
                 break;
+            case HookWork hook:
+                hook.Ack.TrySetException(ex);
+                break;
             case CommandWork command:
                 command.Result.TrySetException(ex);
                 break;
@@ -176,7 +199,38 @@ sealed class SpeechEngine : IAsyncDisposable
         }
     }
 
-    IngestResponse AcceptNew(StoredSubmit submit)
+    IngestResponse AcceptHook(HookEnvelope envelope, bool start)
+    {
+        var rejection = HookRules.Validate(envelope);
+        if (rejection is not null)
+            return IngestResponse.Rejected(rejection);
+
+        var generation = CursorSession.GenerationId(envelope.Payload);
+        if (generation is not null && _idByGeneration.TryGetValue(generation, out var existing))
+        {
+            if (_session.Turns.Remove(generation))
+                _turnStore.Save(_session.Turns);
+            return IngestResponse.Accepted(existing, duplicate: true);
+        }
+
+        // The turn file is durable before the caller is told the hook was accepted.
+        var apply = _session.Apply(envelope.Payload);
+        if (apply.Changed)
+            _turnStore.Save(_session.Turns);
+        if (apply.Ready is not StoredSubmit submit)
+            return IngestResponse.Acknowledged();
+
+        var response = AcceptNew(submit, start);
+        if (string.Equals(response.Type, "accepted", StringComparison.Ordinal))
+        {
+            _session.Turns.Remove(submit.GenerationId!);
+            _turnStore.Save(_session.Turns);
+        }
+
+        return response;
+    }
+
+    IngestResponse AcceptNew(StoredSubmit submit, bool start)
     {
         var rejection = SubmitRules.Validate(submit);
         if (rejection is not null)
@@ -201,18 +255,111 @@ sealed class SpeechEngine : IAsyncDisposable
         _hold = false;
         _policy.Enqueue(_queue, item);
         PublishQueue();
-        Advance();
+        if (start)
+            Advance();
         return IngestResponse.Accepted(item.Id, duplicate: false);
+    }
+
+    void ReplayReadyTurns()
+    {
+        var ready = _session.ReadySubmits();
+        if (ready.Count == 0)
+            return;
+
+        foreach (var submit in ready)
+        {
+            var response = AcceptNew(submit, start: false);
+            if (string.Equals(response.Type, "accepted", StringComparison.Ordinal))
+                _session.Turns.Remove(submit.GenerationId!);
+        }
+
+        _turnStore.Save(_session.Turns);
     }
 
     void TryReplay(string path)
     {
+        string json;
+        try
+        {
+            json = _inbox.ReadText(path);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            _log?.Invoke($"Quarantining unreadable inbox file {path}: {ex.Message}");
+            _inbox.Quarantine(path);
+            return;
+        }
+
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            _log?.Invoke($"Quarantining unreadable inbox file {path}: {ex.Message}");
+            _inbox.Quarantine(path);
+            return;
+        }
+
+        using (doc)
+        {
+            if (IsHook(doc.RootElement))
+            {
+                ReplayHook(path, json);
+                return;
+            }
+        }
+
+        ReplaySubmit(path, json);
+    }
+
+    void ReplayHook(string path, string json)
+    {
+        HookEnvelope? envelope;
+        try
+        {
+            envelope = JsonSerializer.Deserialize(json, IngestJsonContext.Default.HookEnvelope);
+        }
+        catch (JsonException ex)
+        {
+            _log?.Invoke($"Quarantining unreadable inbox file {path}: {ex.Message}");
+            _inbox.Quarantine(path);
+            return;
+        }
+
+        if (envelope is null)
+        {
+            _inbox.Quarantine(path);
+            return;
+        }
+
+        var response = AcceptHook(envelope, start: false);
+        if (!string.Equals(response.Type, "accepted", StringComparison.Ordinal))
+        {
+            _log?.Invoke($"Quarantining invalid inbox file {path}: {response.Error}");
+            _inbox.Quarantine(path);
+            return;
+        }
+
+        _inbox.Delete(path);
+    }
+
+    static bool IsHook(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object
+        && root.TryGetProperty("type", out var type)
+        && type.ValueKind == JsonValueKind.String
+        && string.Equals(type.GetString(), "hook", StringComparison.Ordinal);
+
+    void ReplaySubmit(string path, string json)
+    {
         StoredSubmit stored;
         try
         {
-            stored = _inbox.Read(path);
+            stored = JsonSerializer.Deserialize(json, IngestJsonContext.Default.StoredSubmit)
+                ?? throw new InvalidDataException("Empty inbox file.");
         }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidDataException)
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
         {
             _log?.Invoke($"Quarantining unreadable inbox file {path}: {ex.Message}");
             _inbox.Quarantine(path);
@@ -261,8 +408,8 @@ sealed class SpeechEngine : IAsyncDisposable
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
             GetSettingsCommand => Ok(command.Id, settings: CopySettings()),
             UpdateSettingsCommand update => ApplyMode(command.Id, update.Mode),
-            ConnectSourceCommand connect => SetSource(command.Id, connect.Source, enabled: true),
-            DisconnectSourceCommand disconnect => SetSource(command.Id, disconnect.Source, enabled: false),
+            ConnectSourceCommand connect => ConnectSource(command.Id, connect.Source),
+            DisconnectSourceCommand disconnect => DisconnectSource(command.Id, disconnect.Source),
             GetSourceStatusCommand status => SourceStatus(command.Id, status.Source),
             GetSnapshotCommand => Ok(command.Id, snapshot: BuildSnapshot()),
             _ => Fail(command.Id, ProtocolErrors.UnknownCommand),
@@ -414,14 +561,55 @@ sealed class SpeechEngine : IAsyncDisposable
         return Ok(id);
     }
 
-    ResultMessage SetSource(string id, string source, bool enabled)
+    ResultMessage ConnectSource(string id, string source)
     {
-        if (string.IsNullOrWhiteSpace(source) || source.Trim().Length > SubmitRules.MaxSource)
+        if (!TryNormalizeSource(source, out source))
             return Fail(id, ProtocolErrors.InvalidArgument);
+        if (!CursorHooks.IsCursor(source))
+            return StoreSource(id, source, enabled: true, SourceConnectionStatus.Connected, legacySpeaker: false);
 
-        source = source.Trim();
+        try
+        {
+            var installation = _cursor.Install();
+            return StoreSource(id, source, installation.Status == SourceConnectionStatus.Connected, installation.Status, installation.LegacySpeaker);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
+        {
+            _log?.Invoke($"Cursor connect failed: {ex.Message}");
+            return Fail(id, ProtocolErrors.InvalidState);
+        }
+    }
+
+    ResultMessage DisconnectSource(string id, string source)
+    {
+        if (!TryNormalizeSource(source, out source))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (!CursorHooks.IsCursor(source))
+            return StoreSource(id, source, enabled: false, SourceConnectionStatus.Disconnected, legacySpeaker: false);
+
+        try
+        {
+            var installation = _cursor.Uninstall();
+            return StoreSource(id, source, enabled: false, installation.Status, installation.LegacySpeaker);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException)
+        {
+            _log?.Invoke($"Cursor disconnect failed: {ex.Message}");
+            return Fail(id, ProtocolErrors.InvalidState);
+        }
+    }
+
+    static bool TryNormalizeSource(string source, out string normalized)
+    {
+        normalized = source.Trim();
+        return !string.IsNullOrWhiteSpace(normalized) && normalized.Length <= SubmitRules.MaxSource;
+    }
+
+    ResultMessage StoreSource(string id, string source, bool enabled, SourceConnectionStatus status, bool legacySpeaker)
+    {
+        var dto = new SourceStatusDto { Name = source, Status = status, LegacySpeaker = legacySpeaker };
         if (!enabled && _settings.Sources.All(s => !string.Equals(s.Name, source, StringComparison.Ordinal)))
-            return Ok(id, source: new SourceStatusDto { Name = source, Status = SourceConnectionStatus.Disconnected });
+            return Ok(id, source: dto);
 
         var sources = _settings.Sources
             .Where(s => !string.Equals(s.Name, source, StringComparison.Ordinal))
@@ -432,10 +620,9 @@ sealed class SpeechEngine : IAsyncDisposable
         _settings = new SettingsDto { Mode = _mode, Sources = sources };
         _settingsStore.Save(_settings);
 
-        var status = enabled ? SourceConnectionStatus.Connected : SourceConnectionStatus.Disconnected;
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
         Publish(new SourceChangedEvent { Source = source, Status = status });
-        return Ok(id, source: new SourceStatusDto { Name = source, Status = status });
+        return Ok(id, source: dto);
     }
 
     ResultMessage SourceStatus(string id, string source)
@@ -444,6 +631,8 @@ sealed class SpeechEngine : IAsyncDisposable
             return Fail(id, ProtocolErrors.InvalidArgument);
 
         source = source.Trim();
+        if (CursorHooks.IsCursor(source))
+            return Ok(id, source: _cursor.Inspect().ToDto());
         return Ok(id, source: new SourceStatusDto { Name = source, Status = StatusOf(source) });
     }
 
@@ -604,7 +793,13 @@ sealed class SpeechEngine : IAsyncDisposable
     List<SourceStatusDto> SourceStatuses() =>
         _settings.Sources
             .OrderBy(s => s.Name, StringComparer.Ordinal)
-            .Select(s => new SourceStatusDto { Name = s.Name, Status = s.Enabled ? SourceConnectionStatus.Connected : SourceConnectionStatus.Disconnected })
+            .Select(s => CursorHooks.IsCursor(s.Name)
+                ? _cursor.Inspect().ToDto()
+                : new SourceStatusDto
+                {
+                    Name = s.Name,
+                    Status = s.Enabled ? SourceConnectionStatus.Connected : SourceConnectionStatus.Disconnected,
+                })
             .ToList();
 
     SourceConnectionStatus StatusOf(string source)
@@ -690,6 +885,12 @@ sealed class SpeechEngine : IAsyncDisposable
     sealed class SubmitWork(StoredSubmit submit, TaskCompletionSource<IngestResponse> ack) : Work
     {
         public StoredSubmit Submit { get; } = submit;
+        public TaskCompletionSource<IngestResponse> Ack { get; } = ack;
+    }
+
+    sealed class HookWork(HookEnvelope envelope, TaskCompletionSource<IngestResponse> ack) : Work
+    {
+        public HookEnvelope Envelope { get; } = envelope;
         public TaskCompletionSource<IngestResponse> Ack { get; } = ack;
     }
 

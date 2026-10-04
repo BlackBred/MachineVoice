@@ -24,6 +24,19 @@ public class ProtocolCodecTests
             Mode = PlaybackMode.Confirm,
         });
         Assert.Contains("\"mode\":\"confirm\"", mode);
+
+        var legacy = ProtocolCodec.Write(new ResultMessage
+        {
+            Id = "1",
+            Ok = true,
+            Source = new SourceStatusDto
+            {
+                Name = "cursor",
+                Status = SourceConnectionStatus.Connected,
+                LegacySpeaker = true,
+            },
+        });
+        Assert.Contains("\"legacySpeaker\":true", legacy);
     }
 
     [Fact]

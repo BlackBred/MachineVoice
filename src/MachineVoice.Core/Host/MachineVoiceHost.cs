@@ -8,6 +8,9 @@ public sealed class MachineVoiceOptions
     public required ITtsEngine Tts { get; init; }
     public IQueuePolicy? QueuePolicy { get; init; }
     public Action<string>? Log { get; init; }
+
+    /// <summary>Directory that contains hooks.json. Defaults to ~/.cursor.</summary>
+    public string? CursorDirectory { get; init; }
 }
 
 public sealed class MachineVoiceHost : IAsyncDisposable
@@ -45,8 +48,12 @@ public sealed class MachineVoiceHost : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options.Tts);
 
         PrepareDirectories(options.RootDirectory);
+        var cursorDirectory = options.CursorDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".cursor");
         var engine = new SpeechEngine(
             options.RootDirectory,
+            cursorDirectory,
             options.Tts,
             options.QueuePolicy ?? new FifoQueuePolicy(),
             options.Log);

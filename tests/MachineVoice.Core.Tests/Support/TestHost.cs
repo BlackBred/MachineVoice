@@ -34,5 +34,6 @@ static class TestHost
         {
             RootDirectory = root,
             Tts = tts,
+            CursorDirectory = Path.Combine(root, "cursor-config"),
         });
 }

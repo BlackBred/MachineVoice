@@ -36,4 +36,32 @@ public static class IngestClient
         return JsonSerializer.Deserialize(line, IngestJsonContext.Default.IngestResponse)
             ?? throw new InvalidDataException("Empty ingest response.");
     }
+
+    public static async Task<IngestResponse> SubmitHookAsync(
+        string socketPath,
+        string cursorPayloadJson,
+        CancellationToken cancellationToken = default)
+    {
+        using var payload = JsonDocument.Parse(cursorPayloadJson);
+        var envelope = new HookEnvelope
+        {
+            Version = ProtocolVersion.Current,
+            Type = "hook",
+            Source = CursorHooks.SourceName,
+            Payload = payload.RootElement.Clone(),
+        };
+        var json = JsonSerializer.Serialize(envelope, IngestJsonContext.Default.HookEnvelope);
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), cancellationToken).ConfigureAwait(false);
+        using var stream = new NetworkStream(socket, ownsSocket: false);
+        await Ndjson.WriteLineAsync(stream, json, cancellationToken).ConfigureAwait(false);
+
+        using var reader = Ndjson.CreateReader(stream);
+        var line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(line))
+            throw new IOException("Ingest connection closed before a response.");
+
+        return JsonSerializer.Deserialize(line, IngestJsonContext.Default.IngestResponse)
+            ?? throw new InvalidDataException("Empty ingest response.");
+    }
 }

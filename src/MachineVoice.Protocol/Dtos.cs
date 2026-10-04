@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MachineVoice.Protocol;
 
 public sealed class SpeechItemDto
@@ -35,6 +37,10 @@ public sealed class SourceStatusDto
 {
     public string Name { get; init; } = "";
     public SourceConnectionStatus Status { get; init; }
+
+    /// <summary>An older speak.sh hook is still registered and would read the same responses.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool LegacySpeaker { get; init; }
 }
 
 public sealed class SnapshotDto
