@@ -4,8 +4,7 @@ namespace MachineVoice.Stage0.Interop;
 
 /// <summary>
 /// Makes an Avalonia window behave as an overlay: it floats above full-screen apps, is visible on
-/// every Space and never becomes key. Not stealing focus on click additionally relies on the app
-/// running with the Prohibited activation policy (see <see cref="MacApp.Policy"/>).
+/// every Space, never becomes key and does not activate the app when clicked.
 /// </summary>
 /// <remarks>
 /// Swapping the window to Avalonia's AvnPanel (NSPanel) class is not possible: by the time the

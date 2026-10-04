@@ -23,7 +23,7 @@ public partial class App : Application
     private const uint KeyO = 0x1F;
     private const uint KeyT = 0x11;
 
-    private readonly SaySpeaker _speaker = new();
+    private ISpeaker _speaker = null!;
     private OverlayWindow? _overlay;
     private TrayIcon? _tray;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
@@ -38,6 +38,7 @@ public partial class App : Application
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             desktop.Exit += (_, _) => CarbonHotkeys.UnregisterAll();
 
+            _speaker = Program.UseSay ? new SaySpeaker() : new AvSpeaker("ru-RU");
             _overlay = new OverlayWindow();
             _overlay.SpeakRequested += SpeakTest;
             _overlay.PauseRequested += _speaker.TogglePause;
@@ -53,8 +54,11 @@ public partial class App : Application
                 _overlay.ShowOverlay();
                 Log.Write("оверлей показан:" + Environment.NewLine + MacOverlay.Describe(_overlay.NSWindow));
                 Log.Write(MacApp.FocusSummary);
-                DispatcherTimer.RunOnce(() => Log.Write($"кнопка «Пауза» на экране: {_overlay.PauseButtonScreenCenter}"),
-                    TimeSpan.FromMilliseconds(200));
+                DispatcherTimer.RunOnce(() =>
+                {
+                    Log.Write($"кнопка «Пауза» на экране: {_overlay.PauseButtonScreenCenter}");
+                    Log.Write(MacApp.DescribeWindows());
+                }, TimeSpan.FromMilliseconds(500));
                 if (Program.DiagnoseFor is { } diagnoseFor)
                 {
                     var last = "";
@@ -91,8 +95,8 @@ public partial class App : Application
     {
         var text = state switch
         {
-            SpeakerState.Speaking => $"говорит (say pid {_speaker.Pid})",
-            SpeakerState.Paused => $"пауза (say pid {_speaker.Pid} остановлен)",
+            SpeakerState.Speaking => $"говорит: {_speaker.Name}",
+            SpeakerState.Paused => $"пауза: {_speaker.Name}",
             _ => "тишина",
         };
         _overlay?.SetStatus(text);
@@ -135,7 +139,8 @@ public partial class App : Application
         menu.Items.Add(MenuItem("Стоп  ⌃⌥S", _speaker.Stop));
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("Диагностика окна в лог", () =>
-            Log.Write(MacOverlay.Describe(_overlay!.NSWindow) + Environment.NewLine + MacApp.FocusSummary)));
+            Log.Write(string.Join(Environment.NewLine,
+                MacOverlay.Describe(_overlay!.NSWindow), MacApp.FocusSummary, MacApp.DescribeWindows()))));
         menu.Items.Add(MenuItem("Выход", () => _desktop?.Shutdown()));
 
         var tray = new TrayIcon
@@ -146,6 +151,8 @@ public partial class App : Application
             IsVisible = true,
         };
         MacOSProperties.SetIsTemplateIcon(tray, true);
+        // The native status item is only created once the icon is attached to the application.
+        TrayIcon.SetIcons(this, [tray]);
         return tray;
     }
 

@@ -14,6 +14,22 @@ internal static class MacApp
         set => SendBool(NSApp, Sel("setActivationPolicy:"), (IntPtr)(long)value);
     }
 
+    /// <summary>All windows of the app, including NSStatusBarWindow hosting menu bar items.</summary>
+    public static string DescribeWindows()
+    {
+        var windows = Send(NSApp, Sel("windows"));
+        var count = SendNUInt(windows, Sel("count"));
+        var lines = new List<string>();
+        for (nuint i = 0; i < count; i++)
+        {
+            var window = Send(windows, Sel("objectAtIndex:"), i);
+            var frame = SendRect(window, Sel("frame"));
+            lines.Add($"  {ClassName(window)}: x {frame.X:F0} y {frame.Y:F0} w {frame.Width:F0} h {frame.Height:F0}, " +
+                      $"visible {SendBool(window, Sel("isVisible")) != 0}, occlusion 0x{SendNUInt(window, Sel("occlusionState")):X}");
+        }
+        return $"окна приложения ({count}):" + Environment.NewLine + string.Join(Environment.NewLine, lines);
+    }
+
     public static bool IsActive => SendBool(NSApp, Sel("isActive")) != 0;
 
     public static string FrontmostAppName

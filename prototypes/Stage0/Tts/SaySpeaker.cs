@@ -3,12 +3,11 @@ using System.Runtime.InteropServices;
 
 namespace MachineVoice.Stage0.Tts;
 
-internal enum SpeakerState { Idle, Speaking, Paused }
-
 /// <summary>
-/// Speaks through /usr/bin/say. Pause and resume suspend the process with SIGSTOP / SIGCONT.
+/// Speaks through /usr/bin/say. Pause and resume suspend the process with SIGSTOP / SIGCONT,
+/// which leaves CoreAudio replaying the last buffer: audible crackling while paused.
 /// </summary>
-internal sealed class SaySpeaker
+internal sealed class SaySpeaker : ISpeaker
 {
     private const int SIGSTOP = 17;
     private const int SIGCONT = 19;
@@ -18,8 +17,8 @@ internal sealed class SaySpeaker
 
     private Process? _process;
 
+    public string Name => $"say (pid {_process?.Id})";
     public SpeakerState State { get; private set; } = SpeakerState.Idle;
-    public int? Pid => _process?.Id;
 
     public event Action<SpeakerState>? StateChanged;
 
@@ -51,12 +50,6 @@ internal sealed class SaySpeaker
         process.StandardInput.Close();
         _process = process;
         SetState(SpeakerState.Speaking);
-    }
-
-    public void TogglePause()
-    {
-        if (State == SpeakerState.Speaking) Pause();
-        else if (State == SpeakerState.Paused) Resume();
     }
 
     public void Pause()

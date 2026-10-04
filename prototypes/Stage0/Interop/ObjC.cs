@@ -21,6 +21,12 @@ internal static class ObjC
     [DllImport(Lib, EntryPoint = "objc_msgSend")] public static extern void SendVoid(IntPtr receiver, IntPtr selector, nuint arg);
     [DllImport(Lib, EntryPoint = "objc_msgSend")] public static extern void SendVoid(IntPtr receiver, IntPtr selector, byte arg);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NSRect { public double X, Y, Width, Height; }
+
+    [DllImport(Lib, EntryPoint = "objc_msgSend")] public static extern NSRect SendRect(IntPtr receiver, IntPtr selector);
+    [DllImport(Lib, EntryPoint = "objc_msgSend")] public static extern IntPtr Send(IntPtr receiver, IntPtr selector, nuint arg);
+
     public static IntPtr Sel(string name) => sel_registerName(name);
 
     public static string ClassName(IntPtr obj) =>

@@ -8,8 +8,11 @@ internal static class Program
     /// <summary>--diagnose[=seconds]: log window and focus state, then quit.</summary>
     public static TimeSpan? DiagnoseFor { get; private set; }
 
-    /// <summary>--policy=prohibited|accessory: activation policy while only the overlay is shown.</summary>
-    public static MacApp.ActivationPolicy OverlayPolicy { get; private set; } = MacApp.ActivationPolicy.Prohibited;
+    /// <summary>--policy=accessory|prohibited: activation policy while only the overlay is shown.</summary>
+    public static MacApp.ActivationPolicy OverlayPolicy { get; private set; } = MacApp.ActivationPolicy.Accessory;
+
+    /// <summary>--tts=say: use /usr/bin/say with SIGSTOP pause instead of AVSpeechSynthesizer.</summary>
+    public static bool UseSay { get; private set; }
 
     [STAThread]
     public static void Main(string[] args)
@@ -20,8 +23,10 @@ internal static class Program
                 DiagnoseFor = TimeSpan.FromSeconds(3);
             else if (arg.StartsWith("--diagnose=") && double.TryParse(arg["--diagnose=".Length..], out var seconds))
                 DiagnoseFor = TimeSpan.FromSeconds(seconds);
-            else if (arg == "--policy=accessory")
-                OverlayPolicy = MacApp.ActivationPolicy.Accessory;
+            else if (arg == "--policy=prohibited")
+                OverlayPolicy = MacApp.ActivationPolicy.Prohibited;
+            else if (arg == "--tts=say")
+                UseSay = true;
         }
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
