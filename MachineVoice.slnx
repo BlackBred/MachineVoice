@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/MachineVoice.Core/MachineVoice.Core.csproj" />
+    <Project Path="src/MachineVoice.Platform.MacOS/MachineVoice.Platform.MacOS.csproj" />
     <Project Path="src/MachineVoice.Protocol/MachineVoice.Protocol.csproj" />
   </Folder>
   <Folder Name="/tests/">

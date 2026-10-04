@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MachineVoice.Core\MachineVoice.Core.csproj" />
+    <ProjectReference Include="..\..\src\MachineVoice.Platform.MacOS\MachineVoice.Platform.MacOS.csproj" />
     <ProjectReference Include="..\..\src\MachineVoice.Protocol\MachineVoice.Protocol.csproj" />
   </ItemGroup>
 
