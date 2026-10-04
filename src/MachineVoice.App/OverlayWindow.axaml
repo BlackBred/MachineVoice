@@ -1,0 +1,101 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MachineVoice.App.OverlayWindow"
+        Title="MachineVoice"
+        WindowDecorations="None"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        RequestedThemeVariant="Dark">
+  <Window.Resources>
+    <StreamGeometry x:Key="PauseGlyph">M3,2 L6.5,2 L6.5,14 L3,14 Z M9.5,2 L13,2 L13,14 L9.5,14 Z</StreamGeometry>
+    <StreamGeometry x:Key="PlayGlyph">M4,1.5 L14,8 L4,14.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="StopGlyph">M3,3 L13,3 L13,13 L3,13 Z</StreamGeometry>
+    <StreamGeometry x:Key="SkipGlyph">M2,2 L10,8 L2,14 Z M11,2 L14,2 L14,14 L11,14 Z</StreamGeometry>
+    <StreamGeometry x:Key="ChatGlyph">M1.5,2.5 L14.5,2.5 L14.5,11 L7.5,11 L4,14.5 L4,11 L1.5,11 Z</StreamGeometry>
+  </Window.Resources>
+
+  <Window.Styles>
+    <Style Selector="Button.icon">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Padding" Value="9" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#26FFFFFF" />
+    </Style>
+    <Style Selector="Button.icon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#40FFFFFF" />
+    </Style>
+    <Style Selector="Button.icon PathIcon">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+    </Style>
+    <Style Selector="Button.pill">
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="12,5" />
+    </Style>
+  </Window.Styles>
+
+  <Border Background="#F01F1F23"
+          BorderBrush="#33FFFFFF"
+          BorderThickness="1"
+          CornerRadius="28"
+          Padding="20,10,10,10"
+          Margin="8"
+          Width="540">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <StackPanel VerticalAlignment="Center" Spacing="2">
+        <TextBlock x:Name="TitleText"
+                   FontWeight="SemiBold"
+                   Foreground="White"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="TopicText"
+                   FontSize="12"
+                   Foreground="#C0FFFFFF"
+                   TextTrimming="CharacterEllipsis" />
+        <ProgressBar x:Name="ProgressLine"
+                     Minimum="0"
+                     Maximum="1"
+                     Height="3"
+                     MinHeight="3"
+                     Margin="0,5,0,1" />
+      </StackPanel>
+
+      <StackPanel x:Name="PlaybackButtons"
+                  Grid.Column="1"
+                  Orientation="Horizontal"
+                  Spacing="2"
+                  VerticalAlignment="Center">
+        <Button x:Name="PauseButton" Classes="icon" Click="OnPause" ToolTip.Tip="Пауза">
+          <PathIcon x:Name="PauseIcon" Data="{StaticResource PauseGlyph}" />
+        </Button>
+        <Button Classes="icon" Click="OnStop" ToolTip.Tip="Стоп">
+          <PathIcon Data="{StaticResource StopGlyph}" />
+        </Button>
+        <Button Classes="icon" Click="OnSkip" ToolTip.Tip="Пропустить">
+          <PathIcon Data="{StaticResource SkipGlyph}" />
+        </Button>
+        <Button Classes="icon" Click="OnOpenChat" ToolTip.Tip="Открыть чат">
+          <PathIcon Data="{StaticResource ChatGlyph}" />
+        </Button>
+      </StackPanel>
+
+      <StackPanel x:Name="ConfirmButtons"
+                  Grid.Column="1"
+                  Orientation="Horizontal"
+                  Spacing="6"
+                  VerticalAlignment="Center"
+                  IsVisible="False">
+        <Button Classes="pill accent" Content="Слушать" Click="OnListen" />
+        <Button Classes="pill" Content="Пропустить" Click="OnDismiss" />
+        <Button Classes="pill" Content="Открыть чат" Click="OnOpenChat" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

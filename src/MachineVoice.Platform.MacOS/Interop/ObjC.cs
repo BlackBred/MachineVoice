@@ -48,6 +48,18 @@ static partial class ObjC
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, float arg);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector, nuint arg);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector, byte arg);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial byte SendBool(IntPtr receiver, IntPtr selector, byte arg);
+
+    public static bool RespondsTo(IntPtr obj, string selector) =>
+        SendBool(obj, Sel("respondsToSelector:"), Sel(selector)) != 0;
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial byte SendBool(IntPtr receiver, IntPtr selector);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]

@@ -10,6 +10,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+
+  <!-- Published with Native AOT into MachineVoice.app; see src/MachineVoice.App/build-app.sh. -->
+  <ItemGroup Condition="Exists('/opt/homebrew/opt/openssl@3/lib')">
+    <LinkerArg Include="-L/opt/homebrew/opt/openssl@3/lib" />
+    <LinkerArg Include="-L/opt/homebrew/opt/brotli/lib" />
+    <LinkerArg Include="-Wl,-dead_strip_dylibs" />
+  </ItemGroup>
 
 </Project>

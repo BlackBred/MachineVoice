@@ -22,6 +22,9 @@ public static class ProtocolCodec
         DisconnectSourceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.DisconnectSourceCommand),
         GetSourceStatusCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.GetSourceStatusCommand),
         GetSnapshotCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.GetSnapshotCommand),
+        ConnectMcpCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ConnectMcpCommand),
+        DisconnectMcpCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.DisconnectMcpCommand),
+        GetMcpStatusCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.GetMcpStatusCommand),
         _ => throw new ArgumentOutOfRangeException(nameof(message), message.GetType().Name, "Unknown command."),
     };
 
@@ -37,6 +40,7 @@ public static class ProtocolCodec
         ConfirmationClearedEvent m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ConfirmationClearedEvent),
         SettingsChangedEvent m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SettingsChangedEvent),
         SourceChangedEvent m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SourceChangedEvent),
+        McpChangedEvent m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.McpChangedEvent),
         ChatRequestedEvent m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ChatRequestedEvent),
         _ => throw new ArgumentOutOfRangeException(nameof(message), message.GetType().Name, "Unknown server message."),
     };
@@ -71,6 +75,9 @@ public static class ProtocolCodec
                 "disconnectSource" => root.Deserialize(ProtocolJsonContext.Default.DisconnectSourceCommand),
                 "getSourceStatus" => root.Deserialize(ProtocolJsonContext.Default.GetSourceStatusCommand),
                 "getSnapshot" => root.Deserialize(ProtocolJsonContext.Default.GetSnapshotCommand),
+                "connectMcp" => root.Deserialize(ProtocolJsonContext.Default.ConnectMcpCommand),
+                "disconnectMcp" => root.Deserialize(ProtocolJsonContext.Default.DisconnectMcpCommand),
+                "getMcpStatus" => root.Deserialize(ProtocolJsonContext.Default.GetMcpStatusCommand),
                 _ => null,
             };
 
@@ -103,6 +110,7 @@ public static class ProtocolCodec
             "confirmation.cleared" => root.Deserialize(ProtocolJsonContext.Default.ConfirmationClearedEvent),
             "settings.changed" => root.Deserialize(ProtocolJsonContext.Default.SettingsChangedEvent),
             "source.changed" => root.Deserialize(ProtocolJsonContext.Default.SourceChangedEvent),
+            "mcp.changed" => root.Deserialize(ProtocolJsonContext.Default.McpChangedEvent),
             "chat.requested" => root.Deserialize(ProtocolJsonContext.Default.ChatRequestedEvent),
             _ => null,
         };

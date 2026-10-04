@@ -10,6 +10,7 @@ sealed class SpeechEngine : IAsyncDisposable
     readonly HistoryStore _history;
     readonly SettingsStore _settingsStore;
     readonly CursorHooks _cursor;
+    readonly CursorMcp _mcp;
     readonly CursorTurnStore _turnStore;
     readonly CursorSession _session = new();
     readonly ITtsEngine _tts;
@@ -38,12 +39,19 @@ sealed class SpeechEngine : IAsyncDisposable
         ITtsEngine tts,
         IQueuePolicy policy,
         HttpMessageHandler? httpHandler,
+        string? mcpServerBinary,
         Action<string>? log)
     {
         _inbox = new Inbox(root);
         _history = new HistoryStore(Path.Combine(root, AppLayout.HistoryFileName), log);
         _settingsStore = new SettingsStore(Path.Combine(root, AppLayout.SettingsFileName), log);
         _cursor = new CursorHooks(cursorDirectory, Path.Combine(root, AppLayout.HookScriptName), CursorHookScript.Content, log);
+        _mcp = new CursorMcp(
+            cursorDirectory,
+            Path.Combine(root, AppLayout.McpBinaryName),
+            mcpServerBinary,
+            Path.Combine(root, AppLayout.ControlSocketName),
+            log);
         _turnStore = new CursorTurnStore(Path.Combine(root, AppLayout.CursorTurnsFileName), log);
         _tts = tts;
         _policy = policy;
@@ -482,6 +490,9 @@ sealed class SpeechEngine : IAsyncDisposable
             DisconnectSourceCommand disconnect => DisconnectSource(command.Id, disconnect.Source),
             GetSourceStatusCommand status => SourceStatus(command.Id, status.Source),
             GetSnapshotCommand => Ok(command.Id, snapshot: BuildSnapshot()),
+            ConnectMcpCommand => ChangeMcp(command.Id, connect: true),
+            DisconnectMcpCommand => ChangeMcp(command.Id, connect: false),
+            GetMcpStatusCommand => new ResultMessage { Id = command.Id, Ok = true, Mcp = _mcp.Inspect() },
             _ => Fail(command.Id, ProtocolErrors.UnknownCommand),
         };
     }
@@ -700,6 +711,23 @@ sealed class SpeechEngine : IAsyncDisposable
             _log?.Invoke($"Cursor disconnect failed: {ex.Message}");
             return Fail(id, ProtocolErrors.InvalidState);
         }
+    }
+
+    ResultMessage ChangeMcp(string id, bool connect)
+    {
+        McpStatusDto status;
+        try
+        {
+            status = connect ? _mcp.Install() : _mcp.Uninstall();
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException or IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            _log?.Invoke($"Cursor MCP {(connect ? "connect" : "disconnect")} failed: {ex.Message}");
+            return Fail(id, ProtocolErrors.InvalidState);
+        }
+
+        Publish(new McpChangedEvent { Mcp = status });
+        return new ResultMessage { Id = id, Ok = true, Mcp = status };
     }
 
     static bool TryNormalizeSource(string source, out string normalized)

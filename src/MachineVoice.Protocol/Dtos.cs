@@ -67,6 +67,17 @@ public sealed class SourceStatusDto
     public bool LegacySpeaker { get; init; }
 }
 
+/// <summary>The MachineVoice entry in ~/.cursor/mcp.json.</summary>
+public sealed class McpStatusDto
+{
+    public SourceConnectionStatus Status { get; init; }
+
+    /// <summary>
+    /// The MCP server binary ships with this installation. Without it (a development build) connecting fails.
+    /// </summary>
+    public bool Available { get; init; }
+}
+
 public sealed class SnapshotDto
 {
     public PlayerState Player { get; init; }

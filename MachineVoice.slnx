@@ -4,6 +4,7 @@
     <Project Path="prototypes/Stage0/MachineVoice.Stage0.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/MachineVoice.App/MachineVoice.App.csproj" />
     <Project Path="src/MachineVoice.Core/MachineVoice.Core.csproj" />
     <Project Path="src/MachineVoice.Mcp/MachineVoice.Mcp.csproj" />
     <Project Path="src/MachineVoice.Platform.MacOS/MachineVoice.Platform.MacOS.csproj" />

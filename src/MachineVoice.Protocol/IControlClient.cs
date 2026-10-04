@@ -22,4 +22,7 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> DisconnectSourceAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> GetSourceStatusAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> GetSnapshotAsync(CancellationToken cancellationToken = default);
+    Task<ResultMessage> ConnectMcpAsync(CancellationToken cancellationToken = default);
+    Task<ResultMessage> DisconnectMcpAsync(CancellationToken cancellationToken = default);
+    Task<ResultMessage> GetMcpStatusAsync(CancellationToken cancellationToken = default);
 }

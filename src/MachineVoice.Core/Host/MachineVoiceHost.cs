@@ -14,6 +14,12 @@ public sealed class MachineVoiceOptions
 
     /// <summary>Handler for the LLM summary requests. Defaults to a regular HTTP handler.</summary>
     public HttpMessageHandler? HttpHandler { get; init; }
+
+    /// <summary>
+    /// The self-contained MachineVoice.Mcp binary inside the app. Connecting MCP to Cursor copies it into
+    /// <see cref="RootDirectory"/>. Null in builds without it: the MCP status then reports it as unavailable.
+    /// </summary>
+    public string? McpServerBinary { get; init; }
 }
 
 public sealed class MachineVoiceHost : IAsyncDisposable
@@ -40,6 +46,8 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             "Application Support",
             "MachineVoice");
 
+    public static string ControlSocketIn(string rootDirectory) => Path.Combine(rootDirectory, AppLayout.ControlSocketName);
+
     public string RootDirectory { get; }
     public string IngestSocketPath { get; }
     public string ControlSocketPath { get; }
@@ -60,6 +68,7 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             options.Tts,
             options.QueuePolicy ?? new FifoQueuePolicy(),
             options.HttpHandler,
+            options.McpServerBinary,
             options.Log);
         IngestServer? ingest = null;
         ControlServer? control = null;

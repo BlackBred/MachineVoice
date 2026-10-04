@@ -20,6 +20,9 @@ namespace MachineVoice.Protocol;
 [JsonSerializable(typeof(DisconnectSourceCommand))]
 [JsonSerializable(typeof(GetSourceStatusCommand))]
 [JsonSerializable(typeof(GetSnapshotCommand))]
+[JsonSerializable(typeof(ConnectMcpCommand))]
+[JsonSerializable(typeof(DisconnectMcpCommand))]
+[JsonSerializable(typeof(GetMcpStatusCommand))]
 [JsonSerializable(typeof(ResultMessage))]
 [JsonSerializable(typeof(SnapshotEvent))]
 [JsonSerializable(typeof(PlayerStateEvent))]
@@ -30,6 +33,7 @@ namespace MachineVoice.Protocol;
 [JsonSerializable(typeof(ConfirmationClearedEvent))]
 [JsonSerializable(typeof(SettingsChangedEvent))]
 [JsonSerializable(typeof(SourceChangedEvent))]
+[JsonSerializable(typeof(McpChangedEvent))]
 [JsonSerializable(typeof(ChatRequestedEvent))]
 [JsonSerializable(typeof(SnapshotDto))]
 [JsonSerializable(typeof(SettingsDto))]
@@ -39,4 +43,5 @@ namespace MachineVoice.Protocol;
 [JsonSerializable(typeof(SourceSettingDto))]
 [JsonSerializable(typeof(SummarySettingsDto))]
 [JsonSerializable(typeof(SourceStatusDto))]
+[JsonSerializable(typeof(McpStatusDto))]
 public partial class ProtocolJsonContext : JsonSerializerContext;

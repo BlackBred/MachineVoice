@@ -10,6 +10,7 @@ static class AppLayout
     public const string SettingsFileName = "settings.json";
     public const string HookScriptName = "hook.sh";
     public const string CursorTurnsFileName = "cursor-turns.json";
+    public const string McpBinaryName = "MachineVoice.Mcp";
 
     public const UnixFileMode PrivateFile = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     public const UnixFileMode ExecutableFile =

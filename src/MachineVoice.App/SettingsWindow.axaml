@@ -1,0 +1,120 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MachineVoice.App.SettingsWindow"
+        Title="MachineVoice — настройки"
+        Width="600"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="TextBlock.h">
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.warning">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#D98A00" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="TextBlock.error">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#E5484D" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="14,10" />
+    </Style>
+    <Style Selector="Grid.form > TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </Window.Styles>
+
+  <StackPanel Margin="24" Spacing="22">
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Режим" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="ModeAuto" GroupName="mode" Content="Авто" IsCheckedChanged="OnModeChecked" />
+        <RadioButton x:Name="ModeConfirm" GroupName="mode" Content="По подтверждению" IsCheckedChanged="OnModeChecked" />
+        <RadioButton x:Name="ModeSilent" GroupName="mode" Content="Тихий" IsCheckedChanged="OnModeChecked" />
+      </StackPanel>
+      <TextBlock Classes="hint"
+                 Text="«Авто» читает каждый ответ сразу. «По подтверждению» сначала показывает тост с кнопкой «Слушать». «Тихий» только сохраняет ответы в историю." />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Источники" />
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock Text="Cursor" FontWeight="SemiBold" />
+            <TextBlock x:Name="CursorStatusText" Classes="hint" />
+          </StackPanel>
+          <Button x:Name="CursorButton" Grid.Column="1" VerticalAlignment="Center" Click="OnCursorClick" />
+        </Grid>
+      </Border>
+      <TextBlock x:Name="LegacyWarning"
+                 Classes="warning"
+                 IsVisible="False"
+                 Text="В ~/.cursor/hooks.json остался старый хук speak.sh: ответы будут читаться дважды. Выключите его командой «cursor-speaker.sh off»." />
+      <TextBlock x:Name="CursorError" Classes="error" IsVisible="False" />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="MCP" />
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock Text="MCP-сервер в Cursor" FontWeight="SemiBold" />
+            <TextBlock x:Name="McpStatusText" Classes="hint" />
+          </StackPanel>
+          <Button x:Name="McpButton" Grid.Column="1" VerticalAlignment="Center" Click="OnMcpClick" />
+        </Grid>
+      </Border>
+      <TextBlock Classes="hint"
+                 Text="Позволяет управлять MachineVoice обычными фразами в чате Cursor: «поставь чтение на паузу», «включи тихий режим»." />
+      <TextBlock x:Name="McpHint"
+                 Classes="warning"
+                 IsVisible="False"
+                 Text="Если Cursor не подхватил сервер сам, включите machinevoice в настройках MCP в Cursor или перезапустите Cursor." />
+      <TextBlock x:Name="McpError" Classes="error" IsVisible="False" />
+    </StackPanel>
+
+    <StackPanel Spacing="10">
+      <TextBlock Classes="h" Text="Пересказ через LLM" />
+      <CheckBox x:Name="SummaryEnabled" Content="Пересказывать ответы перед чтением" />
+      <Grid Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="Адрес" />
+        <TextBox x:Name="SummaryEndpoint" Grid.Column="1" PlaceholderText="http://localhost:11434/v1" />
+        <TextBlock Grid.Row="1" Text="Модель" />
+        <TextBox x:Name="SummaryModel" Grid.Row="1" Grid.Column="1" PlaceholderText="например, qwen3:8b" />
+        <TextBlock Grid.Row="2" Text="Ключ API" />
+        <TextBox x:Name="SummaryApiKey" Grid.Row="2" Grid.Column="1" PasswordChar="•" PlaceholderText="не нужен для Ollama" />
+        <TextBlock Grid.Row="3" Text="Тайм-аут, с" />
+        <NumericUpDown x:Name="SummaryTimeout"
+                       Grid.Row="3"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="1"
+                       Maximum="300"
+                       Increment="1"
+                       FormatString="0" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Classes="accent" Content="Сохранить" Click="OnSaveSummary" />
+        <TextBlock x:Name="SummaryStatus" Classes="hint" VerticalAlignment="Center" />
+      </StackPanel>
+      <TextBlock Classes="hint"
+                 Text="Подходит любой OpenAI-совместимый сервер, например Ollama. Если модель не ответит вовремя, ответ читается без пересказа." />
+    </StackPanel>
+
+  </StackPanel>
+</Window>

@@ -153,7 +153,7 @@ sealed class CursorHooks
             }
         }
 
-        kept.Add(new JsonObject
+        kept.Add((JsonNode)new JsonObject
         {
             ["command"] = _command,
             ["timeout"] = HookTimeoutSeconds,

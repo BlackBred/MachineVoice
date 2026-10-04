@@ -44,6 +44,15 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new GetSnapshotCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 
+    public Task<ResultMessage> ConnectMcpAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new ConnectMcpCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
+    public Task<ResultMessage> DisconnectMcpAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new DisconnectMcpCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
+    public Task<ResultMessage> GetMcpStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new GetMcpStatusCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
     public abstract IAsyncEnumerable<EventMessage> EventsAsync(CancellationToken cancellationToken = default);
 
     public abstract ValueTask DisposeAsync();

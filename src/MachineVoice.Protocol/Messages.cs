@@ -85,6 +85,22 @@ public sealed class GetSnapshotCommand : ClientMessage
     public string Type { get; init; } = "getSnapshot";
 }
 
+/// <summary>Registers the bundled MCP server in ~/.cursor/mcp.json. Not a source of responses.</summary>
+public sealed class ConnectMcpCommand : ClientMessage
+{
+    public string Type { get; init; } = "connectMcp";
+}
+
+public sealed class DisconnectMcpCommand : ClientMessage
+{
+    public string Type { get; init; } = "disconnectMcp";
+}
+
+public sealed class GetMcpStatusCommand : ClientMessage
+{
+    public string Type { get; init; } = "getMcpStatus";
+}
+
 public abstract class ServerMessage
 {
     public int Version { get; init; } = ProtocolVersion.Current;
@@ -99,6 +115,7 @@ public sealed class ResultMessage : ServerMessage
     public SettingsDto? Settings { get; init; }
     public SourceStatusDto? Source { get; init; }
     public SnapshotDto? Snapshot { get; init; }
+    public McpStatusDto? Mcp { get; init; }
 }
 
 public abstract class EventMessage : ServerMessage;
@@ -159,6 +176,12 @@ public sealed class SourceChangedEvent : EventMessage
     public string Type { get; init; } = "source.changed";
     public string Source { get; init; } = "";
     public SourceConnectionStatus Status { get; init; }
+}
+
+public sealed class McpChangedEvent : EventMessage
+{
+    public string Type { get; init; } = "mcp.changed";
+    public McpStatusDto Mcp { get; init; } = new();
 }
 
 public sealed class ChatRequestedEvent : EventMessage
