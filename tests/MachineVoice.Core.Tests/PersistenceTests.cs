@@ -15,7 +15,7 @@ public class PersistenceTests
             "cursor", "gen-1", "привет", Project: "MachineVoice", ConversationId: "chat", Topic: "тема"));
         Assert.Equal("accepted", accepted.Type);
         Assert.False(accepted.Duplicate);
-        Assert.Equal("привет", firstTts.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: тема.\nпривет.", firstTts.Text);
         Assert.Single(Directory.GetFiles(Inbox(root.Path)));
         await first.DisposeAsync();
         Assert.Single(Directory.GetFiles(Inbox(root.Path)));
@@ -23,7 +23,7 @@ public class PersistenceTests
         var secondTts = new ManualTtsEngine();
         var second = await TestHost.StartAsync(root.Path, secondTts);
         Assert.Equal(accepted.Id, secondTts.UtteranceId);
-        Assert.Equal("привет", secondTts.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: тема.\nпривет.", secondTts.Text);
         await using var client = await second.ConnectInProcessAsync();
         var log = EventLog.Pump(client);
         var snapshot = await log.TakeAsync<SnapshotEvent>();

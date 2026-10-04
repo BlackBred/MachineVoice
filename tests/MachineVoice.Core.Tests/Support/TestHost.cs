@@ -29,11 +29,12 @@ sealed class TempRoot : IAsyncDisposable
 
 static class TestHost
 {
-    public static Task<MachineVoiceHost> StartAsync(string root, ManualTtsEngine tts) =>
+    public static Task<MachineVoiceHost> StartAsync(string root, ManualTtsEngine tts, HttpMessageHandler? http = null) =>
         MachineVoiceHost.StartAsync(new MachineVoiceOptions
         {
             RootDirectory = root,
             Tts = tts,
             CursorDirectory = Path.Combine(root, "cursor-config"),
+            HttpHandler = http,
         });
 }

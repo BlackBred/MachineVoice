@@ -26,7 +26,7 @@ public class CursorAdapterTests
 
         var stopped = await IngestClient.SubmitHookAsync(host.IngestSocketPath, Stop("gen-1", "completed"));
         Assert.False(stopped.Duplicate);
-        Assert.Equal("готовый ответ", tts.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: первая строка.\nготовый ответ.", tts.Text);
 
         await using var client = await host.ConnectInProcessAsync();
         var snapshot = await client.GetSnapshotAsync();
@@ -57,7 +57,7 @@ public class CursorAdapterTests
 
         var answered = await IngestClient.SubmitHookAsync(host.IngestSocketPath, Response("gen-2", "позже"));
         Assert.False(answered.Duplicate);
-        Assert.Equal("позже", tts.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: тема.\nпозже.", tts.Text);
         await host.DisposeAsync();
     }
 
@@ -211,7 +211,7 @@ public class CursorAdapterTests
         await RunHookAsync(script, Prompt("live", "из хука"));
         await RunHookAsync(script, Response("live", "озвучить"));
         await RunHookAsync(script, Stop("live", "completed"));
-        Assert.Equal("озвучить", tts.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: из хука.\nозвучить.", tts.Text);
         var inbox = Directory.GetFiles(Path.Combine(root.Path, "inbox"));
         var stored = Assert.Single(inbox);
         Assert.DoesNotContain("\"type\":\"hook\"", await File.ReadAllTextAsync(stored));
@@ -230,7 +230,7 @@ public class CursorAdapterTests
 
         var restarted = new ManualTtsEngine();
         var again = await TestHost.StartAsync(root.Path, restarted);
-        Assert.Equal("из журнала", restarted.Text);
+        Assert.Equal("Cursor, проект MachineVoice, тема: после остановки.\nиз журнала.", restarted.Text);
         await using var after = await again.ConnectInProcessAsync();
         var snapshot = await after.GetSnapshotAsync();
         Assert.Equal("после остановки", snapshot.Snapshot!.Current!.Topic);

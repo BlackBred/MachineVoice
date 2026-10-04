@@ -44,7 +44,7 @@ public class InProcessClientTests
         Assert.False(first.Duplicate);
         Assert.True(second.Duplicate);
         Assert.Equal(first.Id, second.Id);
-        Assert.Equal("one", tts.Text);
+        Assert.Equal("Cursor.\none.", tts.Text);
 
         await using var client = await host.ConnectInProcessAsync();
         var snapshot = await client.GetSnapshotAsync();

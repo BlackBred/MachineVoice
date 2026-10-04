@@ -9,6 +9,10 @@ public sealed class SpeechItem
     public required string GenerationId { get; init; }
     public string? Topic { get; init; }
     public required string Text { get; init; }
+
+    /// <summary>Output of the text pipeline. The item is spoken only after it is set.</summary>
+    public string? Speech { get; internal set; }
+
     public required DateTimeOffset ReceivedAt { get; init; }
     internal string InboxPath { get; init; } = "";
 }

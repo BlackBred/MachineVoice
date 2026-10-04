@@ -14,6 +14,7 @@ sealed class SpeechEngine : IAsyncDisposable
     readonly CursorSession _session = new();
     readonly ITtsEngine _tts;
     readonly IQueuePolicy _policy;
+    readonly HttpClient _http;
     readonly Action<string>? _log;
     readonly Channel<Work> _work = Channel.CreateUnbounded<Work>();
     readonly CancellationTokenSource _shutdown = new();
@@ -31,7 +32,13 @@ sealed class SpeechEngine : IAsyncDisposable
     Task? _loop;
     int _disposed;
 
-    public SpeechEngine(string root, string cursorDirectory, ITtsEngine tts, IQueuePolicy policy, Action<string>? log)
+    public SpeechEngine(
+        string root,
+        string cursorDirectory,
+        ITtsEngine tts,
+        IQueuePolicy policy,
+        HttpMessageHandler? httpHandler,
+        Action<string>? log)
     {
         _inbox = new Inbox(root);
         _history = new HistoryStore(Path.Combine(root, AppLayout.HistoryFileName), log);
@@ -40,6 +47,8 @@ sealed class SpeechEngine : IAsyncDisposable
         _turnStore = new CursorTurnStore(Path.Combine(root, AppLayout.CursorTurnsFileName), log);
         _tts = tts;
         _policy = policy;
+        _http = httpHandler is null ? new HttpClient() : new HttpClient(httpHandler, disposeHandler: false);
+        _http.Timeout = Timeout.InfiniteTimeSpan;
         _log = log;
         _tts.Progress += (_, args) => Post(new ProgressWork(args));
         _tts.Completed += (_, args) => Post(new CompletedWork(args.UtteranceId));
@@ -53,6 +62,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
         _settings = _settingsStore.Load();
         _mode = _settings.Mode;
+        if (_settings.Summary is null)
+            _settings = Settings(_settings.Sources, new SummarySettingsDto());
         foreach (var (generation, turn) in _turnStore.Load())
             _session.Turns[generation] = turn;
         _inbox.DeleteTemps();
@@ -129,6 +140,7 @@ sealed class SpeechEngine : IAsyncDisposable
             _log?.Invoke($"TTS stop failed: {ex.Message}");
         }
 
+        _http.Dispose();
         _shutdown.Dispose();
     }
 
@@ -172,6 +184,9 @@ sealed class SpeechEngine : IAsyncDisposable
                 break;
             case CompletedWork completed:
                 OnCompleted(completed.UtteranceId);
+                break;
+            case PreparedWork prepared:
+                OnPrepared(prepared.ItemId, prepared.Speech);
                 break;
             case SignalWork signal:
                 signal.Action();
@@ -251,6 +266,7 @@ sealed class SpeechEngine : IAsyncDisposable
         }
 
         var item = ToItem(stored, path);
+        Prepare(item);
         Remember(item);
         _hold = false;
         _policy.Enqueue(_queue, item);
@@ -385,8 +401,62 @@ sealed class SpeechEngine : IAsyncDisposable
         var receivedAt = stored.ReceivedAt ?? File.GetLastWriteTimeUtc(path);
         var canonical = SubmitRules.Canonical(stored, id, receivedAt);
         var item = ToItem(canonical, path);
+        Prepare(item);
         Remember(item);
         _policy.Enqueue(_queue, item);
+    }
+
+    /// <summary>
+    /// Runs the text pipeline. Rules finish synchronously; with an LLM step the result arrives later as
+    /// <see cref="PreparedWork"/>, and the summarizer's own timeout bounds how long the queue head waits.
+    /// </summary>
+    void Prepare(SpeechItem item)
+    {
+        var pipeline = LlmSummarizer.IsUsable(_settings.Summary)
+            ? TextPipeline.WithSummary(new LlmSummarizer(_http, _settings.Summary, _log))
+            : TextPipeline.Rules();
+        var context = new SpeechContext(item.Source, item.Project, item.Topic);
+
+        var run = pipeline.RunAsync(item.Text, context, _shutdown.Token);
+        if (run.IsCompletedSuccessfully)
+        {
+            item.Speech = run.Result;
+            return;
+        }
+
+        _ = FinishPrepareAsync(item, run);
+    }
+
+    async Task FinishPrepareAsync(SpeechItem item, ValueTask<string> run)
+    {
+        string speech;
+        try
+        {
+            speech = await run.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"Text pipeline failed: {ex.Message}");
+            speech = item.Text;
+        }
+
+        Post(new PreparedWork(item.Id, speech));
+    }
+
+    void OnPrepared(string itemId, string speech)
+    {
+        var item = _queue.Find(candidate => candidate.Id == itemId);
+        if (item is null || item.Speech is not null)
+            return;
+
+        item.Speech = speech;
+        _byId[item.Id] = ToDto(item);
+        PublishQueue();
+        Advance();
     }
 
     ResultMessage Execute(ClientMessage command)
@@ -407,7 +477,7 @@ sealed class SpeechEngine : IAsyncDisposable
             DismissCommand dismiss => Dismiss(command.Id, dismiss.ItemId),
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
             GetSettingsCommand => Ok(command.Id, settings: CopySettings()),
-            UpdateSettingsCommand update => ApplyMode(command.Id, update.Mode),
+            UpdateSettingsCommand update => UpdateSettings(command.Id, update),
             ConnectSourceCommand connect => ConnectSource(command.Id, connect.Source),
             DisconnectSourceCommand disconnect => DisconnectSource(command.Id, disconnect.Source),
             GetSourceStatusCommand status => SourceStatus(command.Id, status.Source),
@@ -550,15 +620,48 @@ sealed class SpeechEngine : IAsyncDisposable
         if (_mode == mode)
             return Ok(id);
 
-        _mode = mode.Value;
-        _hold = false;
-        if (_confirmationItemId is not null && _mode != PlaybackMode.Confirm)
-            ClearConfirmation();
+        SwitchMode(mode.Value);
+        PersistSettings();
+        Publish(new SettingsChangedEvent { Settings = CopySettings() });
+        Advance();
+        return Ok(id);
+    }
+
+    ResultMessage UpdateSettings(string id, UpdateSettingsCommand update)
+    {
+        if (update.Mode is null && update.Summary is null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (update.Summary is not null && SummaryRules.Validate(update.Summary) is not null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+
+        var changed = false;
+        if (update.Mode is { } mode && mode != _mode)
+        {
+            SwitchMode(mode);
+            changed = true;
+        }
+
+        if (update.Summary is not null)
+        {
+            _settings = Settings(_settings.Sources, SummaryRules.Canonical(update.Summary));
+            changed = true;
+        }
+
+        if (!changed)
+            return Ok(id);
 
         PersistSettings();
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
         Advance();
         return Ok(id);
+    }
+
+    void SwitchMode(PlaybackMode mode)
+    {
+        _mode = mode;
+        _hold = false;
+        if (_confirmationItemId is not null && _mode != PlaybackMode.Confirm)
+            ClearConfirmation();
     }
 
     ResultMessage ConnectSource(string id, string source)
@@ -617,7 +720,7 @@ sealed class SpeechEngine : IAsyncDisposable
             .ToList();
         sources.Add(new SourceSettingDto { Name = source, Enabled = enabled });
         sources.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
-        _settings = new SettingsDto { Mode = _mode, Sources = sources };
+        _settings = Settings(sources, _settings.Summary);
         _settingsStore.Save(_settings);
 
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
@@ -666,7 +769,7 @@ sealed class SpeechEngine : IAsyncDisposable
     {
         if (_player != PlayerState.Idle || _hold || _confirmationItemId is not null || _queue.Count == 0)
             return;
-        if (_mode == PlaybackMode.Silent)
+        if (_mode == PlaybackMode.Silent || _queue[0].Speech is null)
             return;
 
         if (_mode == PlaybackMode.Confirm)
@@ -688,7 +791,7 @@ sealed class SpeechEngine : IAsyncDisposable
         _current = item;
         try
         {
-            _tts.Speak(item.Id, item.Text);
+            _tts.Speak(item.Id, item.Speech ?? item.Text);
         }
         catch (Exception ex)
         {
@@ -741,13 +844,16 @@ sealed class SpeechEngine : IAsyncDisposable
 
     void PersistSettings()
     {
-        _settings = new SettingsDto
-        {
-            Mode = _mode,
-            Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
-        };
+        _settings = Settings(_settings.Sources, _settings.Summary);
         _settingsStore.Save(_settings);
     }
+
+    SettingsDto Settings(IEnumerable<SourceSettingDto> sources, SummarySettingsDto summary) => new()
+    {
+        Mode = _mode,
+        Sources = sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
+        Summary = summary,
+    };
 
     void Remember(SpeechItem item)
     {
@@ -788,6 +894,7 @@ sealed class SpeechEngine : IAsyncDisposable
     {
         Mode = _settings.Mode,
         Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
+        Summary = _settings.Summary,
     };
 
     List<SourceStatusDto> SourceStatuses() =>
@@ -825,6 +932,7 @@ sealed class SpeechEngine : IAsyncDisposable
         GenerationId = item.GenerationId,
         Topic = item.Topic,
         Text = item.Text,
+        Speech = item.Speech,
         ReceivedAt = item.ReceivedAt,
     };
 
@@ -908,6 +1016,12 @@ sealed class SpeechEngine : IAsyncDisposable
     sealed class CompletedWork(string utteranceId) : Work
     {
         public string UtteranceId { get; } = utteranceId;
+    }
+
+    sealed class PreparedWork(string itemId, string speech) : Work
+    {
+        public string ItemId { get; } = itemId;
+        public string Speech { get; } = speech;
     }
 
     sealed class SignalWork(Action action, TaskCompletionSource done) : Work

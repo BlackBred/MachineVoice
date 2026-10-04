@@ -11,6 +11,9 @@ public sealed class MachineVoiceOptions
 
     /// <summary>Directory that contains hooks.json. Defaults to ~/.cursor.</summary>
     public string? CursorDirectory { get; init; }
+
+    /// <summary>Handler for the LLM summary requests. Defaults to a regular HTTP handler.</summary>
+    public HttpMessageHandler? HttpHandler { get; init; }
 }
 
 public sealed class MachineVoiceHost : IAsyncDisposable
@@ -56,6 +59,7 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             cursorDirectory,
             options.Tts,
             options.QueuePolicy ?? new FifoQueuePolicy(),
+            options.HttpHandler,
             options.Log);
         IngestServer? ingest = null;
         ControlServer? control = null;

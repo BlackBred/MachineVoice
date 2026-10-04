@@ -40,6 +40,25 @@ public class ProtocolCodecTests
     }
 
     [Fact]
+    public void UpdateSettings_CarriesSummarySettings()
+    {
+        var json = ProtocolCodec.Write(new UpdateSettingsCommand
+        {
+            Version = ProtocolVersion.Current,
+            Id = "u",
+            Summary = new SummarySettingsDto { Enabled = true, Model = "qwen3", TimeoutSeconds = 7 },
+        });
+        Assert.DoesNotContain("\"mode\"", json);
+
+        var decoded = Assert.IsType<UpdateSettingsCommand>(ProtocolCodec.ReadClient(json).Message);
+        Assert.Null(decoded.Mode);
+        Assert.True(decoded.Summary!.Enabled);
+        Assert.Equal("qwen3", decoded.Summary.Model);
+        Assert.Equal(SummarySettingsDto.DefaultEndpoint, decoded.Summary.Endpoint);
+        Assert.Equal(7, decoded.Summary.TimeoutSeconds);
+    }
+
+    [Fact]
     public void RoundTrips_EveryCommandAndEvent()
     {
         ClientMessage[] commands =
