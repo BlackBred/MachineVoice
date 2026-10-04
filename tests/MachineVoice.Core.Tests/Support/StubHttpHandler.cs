@@ -7,10 +7,10 @@ sealed class StubHttpHandler(Func<HttpRequestMessage, string, CancellationToken,
 {
     public List<(HttpRequestMessage Request, string Body)> Requests { get; } = [];
 
-    public static HttpResponseMessage Chat(string content) => new(HttpStatusCode.OK)
+    public static HttpResponseMessage Chat(string content, string finishReason = "stop") => new(HttpStatusCode.OK)
     {
         Content = new StringContent(
-            $$$"""{"choices":[{"index":0,"message":{"role":"assistant","content":{{{System.Text.Json.JsonSerializer.Serialize(content)}}}}}]}""",
+            $$$"""{"choices":[{"index":0,"message":{"role":"assistant","content":{{{System.Text.Json.JsonSerializer.Serialize(content)}}}},"finish_reason":"{{{finishReason}}}"}]}""",
             Encoding.UTF8,
             "application/json"),
     };

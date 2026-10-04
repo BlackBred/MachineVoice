@@ -18,6 +18,13 @@ public sealed partial class LlmSummarizer : ITextProcessor
         "Не зачитывай код, пути к файлам, ссылки и таблицы дословно: скажи своими словами, что в них. " +
         "Без Markdown, списков, заголовков и эмодзи, короткими предложениями. Ничего не добавляй от себя.";
 
+    // Hybrid reasoning models (Qwen3) skip the chain of thought on this switch; other models ignore it.
+    // A server-specific request field would make strict OpenAI-compatible endpoints reject the request.
+    const string NoThinking = "\n/no_think";
+
+    /// <summary>A longer retelling is cut off mid-sentence, so the rules are used instead.</summary>
+    public const int MaxTokens = 1024;
+
     readonly HttpClient _http;
     readonly SummarySettingsDto _settings;
     readonly Action<string>? _log;
@@ -47,7 +54,7 @@ public sealed partial class LlmSummarizer : ITextProcessor
         {
             _log?.Invoke($"Summary timed out after {_settings.TimeoutSeconds} s, using the rules.");
         }
-        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or NotSupportedException or InvalidDataException)
         {
             _log?.Invoke($"Summary failed, using the rules: {ex.Message}");
         }
@@ -62,9 +69,10 @@ public sealed partial class LlmSummarizer : ITextProcessor
             Model = _settings.Model.Trim(),
             Messages =
             [
-                new ChatMessage { Role = "system", Content = SystemPrompt },
+                new ChatMessage { Role = "system", Content = SystemPrompt + NoThinking },
                 new ChatMessage { Role = "user", Content = UserMessage(text, context) },
             ],
+            MaxTokens = MaxTokens,
         };
 
         using var message = new HttpRequestMessage(HttpMethod.Post, _settings.Endpoint.Trim().TrimEnd('/') + "/chat/completions")
@@ -77,7 +85,10 @@ public sealed partial class LlmSummarizer : ITextProcessor
         using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadFromJsonAsync(SummaryJsonContext.Default.ChatResponse, cancellationToken).ConfigureAwait(false);
-        var content = body?.Choices?.FirstOrDefault()?.Message?.Content;
+        var choice = body?.Choices?.FirstOrDefault();
+        if (choice?.FinishReason == "length")
+            throw new InvalidDataException($"the answer exceeded {MaxTokens} tokens");
+        var content = choice?.Message?.Content;
         return content is null ? null : Thinking().Replace(content, "").Trim();
     }
 
@@ -125,6 +136,7 @@ sealed class ChatRequest
     public string Model { get; init; } = "";
     public List<ChatMessage> Messages { get; init; } = [];
     public double Temperature { get; init; } = 0.3;
+    public int MaxTokens { get; init; }
     public bool Stream { get; init; }
 }
 
@@ -142,6 +154,7 @@ sealed class ChatResponse
 sealed class ChatChoice
 {
     public ChatMessage? Message { get; init; }
+    public string? FinishReason { get; init; }
 }
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]

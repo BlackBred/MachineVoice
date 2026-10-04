@@ -44,6 +44,9 @@ public class SummaryTests
         Assert.Equal("Bearer secret", request.Headers.Authorization!.ToString());
         using var json = JsonDocument.Parse(body);
         Assert.Equal("small", json.RootElement.GetProperty("model").GetString());
+        Assert.Equal(LlmSummarizer.MaxTokens, json.RootElement.GetProperty("max_tokens").GetInt32());
+        var system = json.RootElement.GetProperty("messages")[0].GetProperty("content").GetString();
+        Assert.EndsWith("/no_think", system);
         var user = json.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
         Assert.Contains("code();", user);
         Assert.Contains("что сломалось?", user);
@@ -95,6 +98,23 @@ public class SummaryTests
         await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
         Assert.Equal("Cursor.\nответ.", tts.Text);
         Assert.Single(http.Requests);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task TruncatedAnswer_FallsBackToTheRules()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var http = new StubHttpHandler((_, _, _) => Task.FromResult(StubHttpHandler.Chat("Начало пересказа, которое", "length")));
+        var host = await TestHost.StartAsync(root.Path, tts, http);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        Assert.True((await client.UpdateSettingsAsync(summary: Enabled)).Ok);
+
+        var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", "ответ"));
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
+        Assert.Equal("Cursor.\nответ.", tts.Text);
         await host.DisposeAsync();
     }
 
