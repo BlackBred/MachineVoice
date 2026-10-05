@@ -9,8 +9,9 @@
     </filter>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
-  <g transform="translate(232,232) scale(31.11)" fill="none" stroke="#fff" stroke-linecap="round">
-    <circle cx="9" cy="9" r="8.2" stroke-width="1.0"/>
-    <path stroke-width="1.3" d="M4.5,7.6 V10.4 M6.75,5.8 V12.2 M9,4 V14 M11.25,6.2 V11.8 M13.5,7.4 V10.6"/>
+  <g transform="translate(176,176) scale(37.33)" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.6" y="3.6" width="10.8" height="10.8" rx="1.6" stroke-width="0.9"/>
+    <path stroke-width="0.9" d="M6.3,3.6 V1.4 M9,3.6 V1.4 M11.7,3.6 V1.4 M6.3,14.4 V16.6 M9,14.4 V16.6 M11.7,14.4 V16.6 M3.6,6.3 H1.4 M3.6,9 H1.4 M3.6,11.7 H1.4 M14.4,6.3 H16.6 M14.4,9 H16.6 M14.4,11.7 H16.6"/>
+    <path stroke-width="1.05" d="M5.9,8.2 V9.8 M7.45,7 V11 M9,5.9 V12.1 M10.55,7.2 V10.8 M12.1,8.1 V9.9"/>
   </g>
 </svg>

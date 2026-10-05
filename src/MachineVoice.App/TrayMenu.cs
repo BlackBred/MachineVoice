@@ -141,11 +141,14 @@ sealed class TrayMenu : IDisposable
         var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(144, 144));
         using (var context = bitmap.CreateDrawingContext())
         {
-            // Mirrors Assets/tray-icon-bars.svg; Assets/tray-icon-sine.svg is the alternative design.
-            var ring = new EllipseGeometry(new Rect(0.8, 0.8, 16.4, 16.4));
-            var bars = StreamGeometry.Parse("M4.5,7.6 V10.4 M6.75,5.8 V12.2 M9,4 V14 M11.25,6.2 V11.8 M13.5,7.4 V10.6");
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.6), ring);
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.5, lineCap: PenLineCap.Round), bars);
+            // Mirrors Assets/tray-icon-chip.svg; the other Assets/tray-icon-*.svg files are alternative designs.
+            var pins = StreamGeometry.Parse(
+                "M6.3,3.6 V1.4 M9,3.6 V1.4 M11.7,3.6 V1.4 M6.3,14.4 V16.6 M9,14.4 V16.6 M11.7,14.4 V16.6 " +
+                "M3.6,6.3 H1.4 M3.6,9 H1.4 M3.6,11.7 H1.4 M14.4,6.3 H16.6 M14.4,9 H16.6 M14.4,11.7 H16.6");
+            var bars = StreamGeometry.Parse("M5.9,8.2 V9.8 M7.45,7 V11 M9,5.9 V12.1 M10.55,7.2 V10.8 M12.1,8.1 V9.9");
+            context.DrawRectangle(null, new Pen(Brushes.Black, 1.4), new Rect(3.6, 3.6, 10.8, 10.8), 1.6, 1.6);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.2, lineCap: PenLineCap.Round), pins);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.0, lineCap: PenLineCap.Round), bars);
         }
 
         return bitmap;
