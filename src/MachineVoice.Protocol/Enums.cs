@@ -28,6 +28,21 @@ public enum QueueOrder
     Fifo,
 }
 
+/// <summary>When the heading «Cursor, проект X.» is read before a response.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<HeadingMode>))]
+public enum HeadingMode
+{
+    [JsonStringEnumMemberName("always")]
+    Always,
+
+    [JsonStringEnumMemberName("never")]
+    Never,
+
+    /// <summary>Only when the source or the project differs from the response that was read before.</summary>
+    [JsonStringEnumMemberName("onChange")]
+    OnChange,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerState>))]
 public enum PlayerState
 {

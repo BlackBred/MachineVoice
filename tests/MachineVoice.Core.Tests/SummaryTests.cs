@@ -37,7 +37,7 @@ public class SummaryTests
 
         answer.SetResult(StubHttpHandler.Chat("<think>план</think>Сломался `src/App/Program.cs`, **починил**."));
         await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
-        Assert.Equal("Cursor, тема: что сломалось.\nСломался Program.cs, починил.", tts.Text);
+        Assert.Equal("Cursor.\nСломался Program.cs, починил.", tts.Text);
 
         var (request, body) = Assert.Single(http.Requests);
         Assert.Equal("http://llm.test/v1/chat/completions", request.RequestUri!.ToString());

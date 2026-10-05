@@ -12,7 +12,10 @@ public sealed class TextPipeline(IReadOnlyList<ITextProcessor> processors)
 {
     public IReadOnlyList<ITextProcessor> Processors { get; } = processors;
 
-    /// <summary>Markdown to plain text, code blocks, URLs and paths, then the heading.</summary>
+    /// <summary>
+    /// Markdown to plain text, code blocks, URLs and paths. The heading is not part of it: the engine adds it
+    /// when the response starts, because only then is it known which response was read before.
+    /// </summary>
     public static TextPipeline Rules() => new(RuleSteps());
 
     /// <summary>LLM retelling first (it sees the original Markdown), then the same rules over its answer.</summary>
@@ -30,6 +33,5 @@ public sealed class TextPipeline(IReadOnlyList<ITextProcessor> processors)
         new MarkdownProcessor(),
         new UrlShortener(),
         new PathShortener(),
-        new HeadingProcessor(),
     ];
 }

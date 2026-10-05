@@ -61,6 +61,17 @@
                  Text="Звучащий ответ всегда дочитывается. «Сначала новые» ставит пришедший ответ следующим, а в режиме «По подтверждению» он сразу заменяет тост; прежний ответ ждёт за ним. Переключение сразу переставляет ответы, которые уже ждут." />
     </StackPanel>
 
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Читать агента и проект" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="HeadingAlways" GroupName="heading" Content="Всегда" IsCheckedChanged="OnHeadingChecked" />
+        <RadioButton x:Name="HeadingOnChange" GroupName="heading" Content="При смене" IsCheckedChanged="OnHeadingChecked" />
+        <RadioButton x:Name="HeadingNever" GroupName="heading" Content="Никогда" IsCheckedChanged="OnHeadingChecked" />
+      </StackPanel>
+      <TextBlock Classes="hint"
+                 Text="Перед ответом звучит «Cursor, проект X». «При смене» читает это, только если предыдущий прочитанный ответ был от другого агента или из другого проекта. Действует со следующего ответа." />
+    </StackPanel>
+
     <StackPanel Spacing="10">
       <TextBlock Classes="h" Text="Озвучка" />
       <StackPanel Orientation="Horizontal" Spacing="18">

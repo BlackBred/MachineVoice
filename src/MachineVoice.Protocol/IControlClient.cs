@@ -25,6 +25,7 @@ public interface IControlClient : IAsyncDisposable
         SummarySettingsDto? summary = null,
         TtsSettingsDto? tts = null,
         QueueOrder? order = null,
+        HeadingMode? heading = null,
         CancellationToken cancellationToken = default);
     Task<ResultMessage> ConnectSourceAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> DisconnectSourceAsync(string source, CancellationToken cancellationToken = default);

@@ -29,9 +29,13 @@ sealed class SpeechEngine : IAsyncDisposable
     SettingsDto _settings = new();
     PlaybackMode _mode = PlaybackMode.Auto;
     QueueOrder _order = QueueOrder.Lifo;
+    HeadingMode _heading = HeadingMode.Always;
     PlayerState _player = PlayerState.Idle;
     SpeechItem? _current;
     string? _confirmationItemId;
+
+    // The heading of the response that started last, whether it was read or not.
+    string? _lastHeading;
 
     // Set when the TTS engine refused to speak, so one failure does not run through the whole queue.
     bool _hold;
@@ -76,6 +80,7 @@ sealed class SpeechEngine : IAsyncDisposable
         _settings = _settingsStore.Load();
         _mode = _settings.Mode;
         _order = _settings.Order;
+        _heading = _settings.Heading;
         _settings = Settings(_settings.Sources, _settings.Summary ?? new SummarySettingsDto(), TtsRules.Loaded(_settings.Tts));
         ApplyTts();
         foreach (var (generation, turn) in _turnStore.Load())
@@ -697,9 +702,11 @@ sealed class SpeechEngine : IAsyncDisposable
 
     ResultMessage UpdateSettings(string id, UpdateSettingsCommand update)
     {
-        if (update.Mode is null && update.Order is null && update.Summary is null && update.Tts is null)
+        if (update.Mode is null && update.Order is null && update.Heading is null && update.Summary is null && update.Tts is null)
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Order is { } requested && !Enum.IsDefined(requested))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (update.Heading is { } requestedHeading && !Enum.IsDefined(requestedHeading))
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Summary is not null && SummaryRules.Validate(update.Summary) is not null)
             return Fail(id, ProtocolErrors.InvalidArgument);
@@ -717,6 +724,12 @@ sealed class SpeechEngine : IAsyncDisposable
         {
             _order = order;
             Reorder();
+            changed = true;
+        }
+
+        if (update.Heading is { } heading && heading != _heading)
+        {
+            _heading = heading;
             changed = true;
         }
 
@@ -921,9 +934,12 @@ sealed class SpeechEngine : IAsyncDisposable
     void BeginSpeak(SpeechItem item)
     {
         _current = item;
+        var heading = SpeechHeading.Of(item.Source, item.Project);
+        item.Speech = WithHeading(heading, item.Speech ?? item.Text);
+        _byId[item.Id] = ToDto(item);
         try
         {
-            _tts.Speak(item.Id, item.Speech ?? item.Text);
+            _tts.Speak(item.Id, item.Speech);
         }
         catch (Exception ex)
         {
@@ -936,8 +952,23 @@ sealed class SpeechEngine : IAsyncDisposable
             return;
         }
 
+        _lastHeading = heading;
         _player = PlayerState.Speaking;
         Publish(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = item.Id });
+    }
+
+    // An empty body still gets the heading: the TTS engine is never given nothing to say.
+    string WithHeading(string heading, string body)
+    {
+        var read = body.Length == 0 || _heading switch
+        {
+            HeadingMode.Never => false,
+            HeadingMode.OnChange => !string.Equals(heading, _lastHeading, StringComparison.Ordinal),
+            _ => true,
+        };
+        if (!read)
+            return body;
+        return body.Length == 0 ? heading : heading + "\n" + body;
     }
 
     void Archive(SpeechItem item, SpeechOutcome outcome)
@@ -998,6 +1029,7 @@ sealed class SpeechEngine : IAsyncDisposable
     {
         Mode = _mode,
         Order = _order,
+        Heading = _heading,
         Sources = sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = summary,
         Tts = tts,
@@ -1042,6 +1074,7 @@ sealed class SpeechEngine : IAsyncDisposable
     {
         Mode = _settings.Mode,
         Order = _settings.Order,
+        Heading = _settings.Heading,
         Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = _settings.Summary,
         Tts = _settings.Tts,

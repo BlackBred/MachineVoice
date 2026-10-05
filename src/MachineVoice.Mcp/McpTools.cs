@@ -127,6 +127,7 @@ static class McpTools
             ["player"] = Name(snapshot.Player, ProtocolJsonContext.Default.PlayerState),
             ["mode"] = Name(snapshot.Mode, ProtocolJsonContext.Default.PlaybackMode),
             ["order"] = Name(snapshot.Settings.Order, ProtocolJsonContext.Default.QueueOrder),
+            ["heading"] = Name(snapshot.Settings.Heading, ProtocolJsonContext.Default.HeadingMode),
             ["heldAfterFailure"] = snapshot.Holding,
             ["current"] = Item(snapshot.Current),
             ["awaitingConfirmation"] = Item(snapshot.Confirmation),

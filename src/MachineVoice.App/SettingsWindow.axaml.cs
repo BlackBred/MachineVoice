@@ -42,6 +42,9 @@ public partial class SettingsWindow : Window
         ModeSilent.IsChecked = state.Mode == PlaybackMode.Silent;
         OrderLifo.IsChecked = state.Settings.Order == QueueOrder.Lifo;
         OrderFifo.IsChecked = state.Settings.Order == QueueOrder.Fifo;
+        HeadingAlways.IsChecked = state.Settings.Heading == HeadingMode.Always;
+        HeadingOnChange.IsChecked = state.Settings.Heading == HeadingMode.OnChange;
+        HeadingNever.IsChecked = state.Settings.Heading == HeadingMode.Never;
         var rate = (decimal)state.Settings.Tts.PlaybackRate;
         if (PlaybackRate.Value != rate)
             PlaybackRate.Value = rate;
@@ -168,6 +171,18 @@ public partial class SettingsWindow : Window
         var order = button == OrderFifo ? QueueOrder.Fifo : QueueOrder.Lifo;
         if (order != _state.Settings.Order)
             _ = RunAsync(async () => await _client.UpdateSettingsAsync(order: order));
+    }
+
+    void OnHeadingChecked(object? sender, RoutedEventArgs e)
+    {
+        if (_updating || sender is not RadioButton { IsChecked: true } button)
+            return;
+
+        var heading = button == HeadingNever ? HeadingMode.Never
+            : button == HeadingOnChange ? HeadingMode.OnChange
+            : HeadingMode.Always;
+        if (heading != _state.Settings.Heading)
+            _ = RunAsync(async () => await _client.UpdateSettingsAsync(heading: heading));
     }
 
     async void OnSaveSummary(object? sender, RoutedEventArgs e)

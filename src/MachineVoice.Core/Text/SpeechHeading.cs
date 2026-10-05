@@ -2,26 +2,16 @@ using System.Text.RegularExpressions;
 
 namespace MachineVoice.Core;
 
-/// <summary>Puts a short heading before the text: «Cursor, проект X, тема: Y.»</summary>
-public sealed partial class HeadingProcessor : ITextProcessor
+/// <summary>The short heading before a response: «Cursor, проект X.»</summary>
+public static partial class SpeechHeading
 {
     public const int MaxTopicWords = 12;
 
-    public ValueTask<string> ProcessAsync(string text, SpeechContext context, CancellationToken cancellationToken)
+    public static string Of(string source, string? project)
     {
-        var heading = Heading(context);
-        return ValueTask.FromResult(text.Length == 0 ? heading : heading + "\n" + text);
-    }
-
-    public static string Heading(SpeechContext context)
-    {
-        var parts = new List<string> { SourceName(context.Source) };
-        if (!string.IsNullOrWhiteSpace(context.Project))
-            parts.Add("проект " + SpeechText.Collapse(context.Project));
-
-        var topic = Topic(context.Topic);
-        if (topic is not null)
-            parts.Add("тема: " + topic);
+        var parts = new List<string> { SourceName(source) };
+        if (!string.IsNullOrWhiteSpace(project))
+            parts.Add("проект " + SpeechText.Collapse(project));
         return SpeechText.Sentence(string.Join(", ", parts));
     }
 

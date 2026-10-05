@@ -72,6 +72,9 @@ public sealed class UpdateSettingsCommand : ClientMessage
     /// <summary>Reorders the waiting responses at once; the one being read finishes.</summary>
     public QueueOrder? Order { get; init; }
 
+    /// <summary>Applies from the next response; the one being read keeps its heading.</summary>
+    public HeadingMode? Heading { get; init; }
+
     public SummarySettingsDto? Summary { get; init; }
     public TtsSettingsDto? Tts { get; init; }
 }

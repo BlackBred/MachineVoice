@@ -61,23 +61,21 @@ public class TextPipelineTests
         Assert.Equal(expected, PathShortener.Shorten(input));
 
     [Fact]
-    public void Heading_HasSourceProjectAndShortTopic()
+    public void Heading_HasSourceAndProject()
     {
-        Assert.Equal(
-            "Cursor, проект MachineVoice, тема: Реализуй step 3.",
-            HeadingProcessor.Heading(new SpeechContext("cursor", "MachineVoice", "Реализуй step 3. Потом прогони тесты.")));
-        Assert.Equal("Cursor.", HeadingProcessor.Heading(new SpeechContext("cursor", null, null)));
-        Assert.Equal(
-            "Claude code, тема: Почини Program.cs.",
-            HeadingProcessor.Heading(new SpeechContext("claude-code", " ", "Почини `/Users/me/App/Program.cs`?")));
+        Assert.Equal("Cursor, проект MachineVoice.", SpeechHeading.Of("cursor", "MachineVoice"));
+        Assert.Equal("Cursor.", SpeechHeading.Of("cursor", null));
+        Assert.Equal("Claude code.", SpeechHeading.Of("claude-code", " "));
     }
 
     [Fact]
-    public void Heading_CutsLongTopics()
+    public void Topic_IsTheShortFirstSentence()
     {
+        Assert.Equal("Реализуй step 3", SpeechHeading.Topic("Реализуй step 3. Потом прогони тесты."));
+        Assert.Equal("Почини Program.cs", SpeechHeading.Topic("Почини `/Users/me/App/Program.cs`?"));
         var topic = string.Join(' ', Enumerable.Range(1, 20).Select(i => "слово" + i));
-        var expected = string.Join(' ', Enumerable.Range(1, HeadingProcessor.MaxTopicWords).Select(i => "слово" + i)) + "…";
-        Assert.Equal(expected, HeadingProcessor.Topic(topic));
+        var expected = string.Join(' ', Enumerable.Range(1, SpeechHeading.MaxTopicWords).Select(i => "слово" + i)) + "…";
+        Assert.Equal(expected, SpeechHeading.Topic(topic));
     }
 
     [Fact]
@@ -87,7 +85,7 @@ public class TextPipelineTests
             "Готово, см. [отчёт](https://ci.example.com/run/1) и `src/App/Program.cs`.\n\n```\ncode\n```",
             new SpeechContext("cursor", "App", "почини сборку"));
 
-        Assert.Equal("Cursor, проект App, тема: почини сборку.\nГотово, см. отчёт и Program.cs.\nТут пример кода.", speech);
+        Assert.Equal("Готово, см. отчёт и Program.cs.\nТут пример кода.", speech);
     }
 
     [Fact]
@@ -95,6 +93,6 @@ public class TextPipelineTests
     {
         var run = TextPipeline.Rules().RunAsync("text", new SpeechContext("cursor", null, null));
         Assert.True(run.IsCompletedSuccessfully);
-        Assert.Equal("Cursor.\ntext.", await run);
+        Assert.Equal("text.", await run);
     }
 }
