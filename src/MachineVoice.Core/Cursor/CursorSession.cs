@@ -36,6 +36,14 @@ sealed class CursorSession
         return generation;
     }
 
+    /// <summary>
+    /// The chat the user has just written to. Its queued answers are already read or no longer relevant.
+    /// </summary>
+    public static string? RepliedConversation(JsonElement payload) =>
+        string.Equals(Field(payload, "hook_event_name"), "beforeSubmitPrompt", StringComparison.Ordinal)
+            ? Limit(Field(payload, "conversation_id"), SubmitRules.MaxConversationId)
+            : null;
+
     public HookApply Apply(JsonElement payload)
     {
         if (payload.ValueKind != JsonValueKind.Object)

@@ -236,6 +236,9 @@ sealed class SpeechEngine : IAsyncDisposable
             return IngestResponse.Accepted(existing, duplicate: true);
         }
 
+        if (CursorSession.RepliedConversation(envelope.Payload) is { } replied)
+            DropQueued(replied, start);
+
         // The turn file is durable before the caller is told the hook was accepted.
         var apply = _session.Apply(envelope.Payload);
         if (apply.Changed)
@@ -251,6 +254,22 @@ sealed class SpeechEngine : IAsyncDisposable
         }
 
         return response;
+    }
+
+    void DropQueued(string conversationId, bool start)
+    {
+        var dropped = _queue.FindAll(item => string.Equals(item.ConversationId, conversationId, StringComparison.Ordinal));
+        if (dropped.Count == 0)
+            return;
+
+        _queue.RemoveAll(dropped.Contains);
+        if (dropped.Exists(item => item.Id == _confirmationItemId))
+            ClearConfirmation();
+        PublishQueue();
+        foreach (var item in dropped)
+            Archive(item, SpeechOutcome.Skipped);
+        if (start)
+            Advance();
     }
 
     IngestResponse AcceptNew(StoredSubmit submit, bool start)

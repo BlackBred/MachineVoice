@@ -253,28 +253,58 @@ public class CursorAdapterTests
         await host.DisposeAsync();
     }
 
-    static string Prompt(string generation, string prompt) => JsonSerializer.Serialize(new
+    [Fact(Timeout = 20000)]
+    public async Task NewPrompt_DropsQueuedAnswersOfThatChat()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var host = await TestHost.StartAsync(root.Path, tts);
+        var speaking = await AnswerAsync(host, "gen-1", "chat-1");
+        var answered = await AnswerAsync(host, "gen-2", "chat-1");
+        var other = await AnswerAsync(host, "gen-3", "chat-2");
+
+        await IngestClient.SubmitHookAsync(host.IngestSocketPath, Prompt("gen-4", "следующий вопрос"));
+
+        await using var client = await host.ConnectInProcessAsync();
+        var snapshot = (await client.GetSnapshotAsync()).Snapshot!;
+        Assert.Equal(speaking.Id, snapshot.Current!.Id);
+        Assert.Equal(other.Id, Assert.Single(snapshot.Queue).Id);
+        var dropped = Assert.Single(snapshot.History);
+        Assert.Equal(answered.Id, dropped.Item.Id);
+        Assert.Equal(SpeechOutcome.Skipped, dropped.Outcome);
+        Assert.Equal(2, Directory.GetFiles(Path.Combine(root.Path, "inbox"), "*.json").Length);
+        await host.DisposeAsync();
+    }
+
+    static async Task<IngestResponse> AnswerAsync(MachineVoiceHost host, string generation, string conversation)
+    {
+        await IngestClient.SubmitHookAsync(host.IngestSocketPath, Prompt(generation, "тема", conversation));
+        await IngestClient.SubmitHookAsync(host.IngestSocketPath, Response(generation, "ответ", conversation));
+        return await IngestClient.SubmitHookAsync(host.IngestSocketPath, Stop(generation, "completed", conversation));
+    }
+
+    static string Prompt(string generation, string prompt, string conversation = "chat-1") => JsonSerializer.Serialize(new
     {
         hook_event_name = "beforeSubmitPrompt",
-        conversation_id = "chat-1",
+        conversation_id = conversation,
         generation_id = generation,
         prompt,
         workspace_roots = new[] { "/Users/me/Sources/GitHub/MachineVoice" },
     });
 
-    static string Response(string generation, string text) => JsonSerializer.Serialize(new
+    static string Response(string generation, string text, string conversation = "chat-1") => JsonSerializer.Serialize(new
     {
         hook_event_name = "afterAgentResponse",
-        conversation_id = "chat-1",
+        conversation_id = conversation,
         generation_id = generation,
         text,
         workspace_roots = new[] { "/Users/me/Sources/GitHub/MachineVoice" },
     });
 
-    static string Stop(string generation, string status) => JsonSerializer.Serialize(new
+    static string Stop(string generation, string status, string conversation = "chat-1") => JsonSerializer.Serialize(new
     {
         hook_event_name = "stop",
-        conversation_id = "chat-1",
+        conversation_id = conversation,
         generation_id = generation,
         status,
         workspace_roots = new[] { "/Users/me/Sources/GitHub/MachineVoice" },
