@@ -1,0 +1,13 @@
+---
+description: Where to put throwaway files (previews, experiments, scratch scripts)
+alwaysApply: true
+---
+
+# Scratch files
+
+Anything made only to show the user or to try something out goes in `.spike/`, which is gitignored. This covers image previews and comparison sheets, experimental scripts, and temporary output.
+
+- Use a subfolder per task, e.g. `.spike/tray-icon/preview.png`.
+- Never put such files in `src/`, `docs/`, `tests/`, the repo root, or `artifacts/` (that one is build output).
+- Only assets the project actually uses or keeps as design sources belong in the project tree, e.g. `src/MachineVoice.App/Assets/`.
+- Don't delete files in `.spike/` that you didn't create; they may be the user's experiments.
