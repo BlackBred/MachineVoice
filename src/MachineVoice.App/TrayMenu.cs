@@ -138,17 +138,19 @@ sealed class TrayMenu : IDisposable
 
     static Bitmap RenderGlyph()
     {
-        var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(144, 144));
+        // Avalonia treats 96 DPI as 1x, so 192 DPI makes the 36 px bitmap exactly 18x18 drawing units.
+        // macOS shows the icon about 18 pt tall regardless of its size, so the glyph has to fill the whole bitmap.
+        var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(192, 192));
         using (var context = bitmap.CreateDrawingContext())
         {
             // Mirrors Assets/tray-icon-chip.svg; the other Assets/tray-icon-*.svg files are alternative designs.
             var pins = StreamGeometry.Parse(
-                "M6.3,3.6 V1.4 M9,3.6 V1.4 M11.7,3.6 V1.4 M6.3,14.4 V16.6 M9,14.4 V16.6 M11.7,14.4 V16.6 " +
-                "M3.6,6.3 H1.4 M3.6,9 H1.4 M3.6,11.7 H1.4 M14.4,6.3 H16.6 M14.4,9 H16.6 M14.4,11.7 H16.6");
-            var bars = StreamGeometry.Parse("M5.9,8.2 V9.8 M7.45,7 V11 M9,5.9 V12.1 M10.55,7.2 V10.8 M12.1,8.1 V9.9");
-            context.DrawRectangle(null, new Pen(Brushes.Black, 1.4), new Rect(3.6, 3.6, 10.8, 10.8), 1.6, 1.6);
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.2, lineCap: PenLineCap.Round), pins);
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.0, lineCap: PenLineCap.Round), bars);
+                "M5.75,2.5 V0.9 M9,2.5 V0.9 M12.25,2.5 V0.9 M5.75,15.5 V17.1 M9,15.5 V17.1 M12.25,15.5 V17.1 " +
+                "M2.5,5.75 H0.9 M2.5,9 H0.9 M2.5,12.25 H0.9 M15.5,5.75 H17.1 M15.5,9 H17.1 M15.5,12.25 H17.1");
+            var bars = StreamGeometry.Parse("M5,7.8 V10.2 M7,6.3 V11.7 M9,5 V13 M11,6.5 V11.5 M13,7.7 V10.3");
+            context.DrawRectangle(null, new Pen(Brushes.Black, 1.5), new Rect(2.5, 2.5, 13, 13), 2.2, 2.2);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.4, lineCap: PenLineCap.Round), pins);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.3, lineCap: PenLineCap.Round), bars);
         }
 
         return bitmap;
