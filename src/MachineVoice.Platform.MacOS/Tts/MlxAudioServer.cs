@@ -15,12 +15,14 @@ public sealed class MlxAudioServer : ISpeechServer
     public const string Command = "mlx_audio.server";
     public const string LogFileName = "tts-server.log";
     public const string PidFileName = "tts-server.pid";
+    public const string LogDirectoryName = "tts-server-logs";
 
     static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(90);
     static readonly TimeSpan ProbeTimeout = TimeSpan.FromMilliseconds(500);
 
     readonly object _gate = new();
     readonly SemaphoreSlim _starting = new(1, 1);
+    readonly string _rootDirectory;
     readonly string _logPath;
     readonly string _pidPath;
     readonly Action<string>? _log;
@@ -32,6 +34,7 @@ public sealed class MlxAudioServer : ISpeechServer
 
     public MlxAudioServer(string rootDirectory, Action<string>? log = null)
     {
+        _rootDirectory = rootDirectory;
         _logPath = Path.Combine(rootDirectory, LogFileName);
         _pidPath = Path.Combine(rootDirectory, PidFileName);
         _log = log;
@@ -135,12 +138,16 @@ public sealed class MlxAudioServer : ISpeechServer
         var command = FindCommand() ?? throw new FileNotFoundException(
             $"{Command} is not installed: uv tool install --python 3.12 \"mlx-audio[tts,server]\"");
 
+        // An app started from Finder runs in "/", which is read-only; the server creates its log directory there.
         var start = new ProcessStartInfo(command)
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            WorkingDirectory = _rootDirectory,
         };
+        start.ArgumentList.Add("--log-dir");
+        start.ArgumentList.Add(Path.Combine(_rootDirectory, LogDirectoryName));
         start.ArgumentList.Add("--host");
         start.ArgumentList.Add("127.0.0.1");
         start.ArgumentList.Add("--port");
