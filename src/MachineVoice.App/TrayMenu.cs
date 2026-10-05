@@ -142,10 +142,10 @@ sealed class TrayMenu : IDisposable
         using (var context = bitmap.CreateDrawingContext())
         {
             // Mirrors Assets/tray-icon-bars.svg; Assets/tray-icon-sine.svg is the alternative design.
-            var ring = new EllipseGeometry(new Rect(1.4, 1.4, 15.2, 15.2));
-            var bars = StreamGeometry.Parse("M5,7.7 V10.3 M7,6 V12 M9,4.4 V13.6 M11,6.4 V11.6 M13,7.5 V10.5");
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.4), ring);
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.3, lineCap: PenLineCap.Round), bars);
+            var ring = new EllipseGeometry(new Rect(0.8, 0.8, 16.4, 16.4));
+            var bars = StreamGeometry.Parse("M4.5,7.6 V10.4 M6.75,5.8 V12.2 M9,4 V14 M11.25,6.2 V11.8 M13.5,7.4 V10.6");
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.6), ring);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.5, lineCap: PenLineCap.Round), bars);
         }
 
         return bitmap;
