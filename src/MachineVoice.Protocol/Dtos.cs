@@ -142,6 +142,9 @@ public sealed class VoiceDto
     public string AudioPath { get; init; } = "";
 
     public string Text { get; init; } = "";
+
+    /// <summary>Ships with MachineVoice: it cannot be deleted.</summary>
+    public bool BuiltIn { get; init; }
 }
 
 /// <summary>Optional LLM retelling through an OpenAI-compatible endpoint (Ollama works too).</summary>

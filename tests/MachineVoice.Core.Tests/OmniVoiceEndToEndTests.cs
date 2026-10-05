@@ -35,7 +35,7 @@ public class OmniVoiceEndToEndTests(ITestOutputHelper output)
         }
 
         using var shared = new SharedSpeechServer(new MlxAudioServer(root.Path, Write));
-        var library = new VoiceLibrary(Path.Combine(root.Path, VoiceLibrary.DirectoryName), Write);
+        var library = new VoiceLibrary(Path.Combine(root.Path, VoiceLibrary.DirectoryName), log: Write);
         var synthesizer = new OmniVoiceSynthesizer(library, shared.Lease(), log: Write);
         var studio = new VoiceStudio(library, synthesizer);
         var settings = new OmniVoiceTtsSettingsDto { Endpoint = $"http://127.0.0.1:{Port}/v1" };

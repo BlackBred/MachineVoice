@@ -68,7 +68,7 @@ sealed class AppController
         {
             // Qwen3-TTS and OmniVoice share one mlx_audio.server process.
             var speechServer = _speechServer = new SharedSpeechServer(new MlxAudioServer(_options.RootDirectory, _log.Write));
-            var voices = new VoiceLibrary(Path.Combine(_options.RootDirectory, VoiceLibrary.DirectoryName), _log.Write);
+            var voices = new VoiceLibrary(Path.Combine(_options.RootDirectory, VoiceLibrary.DirectoryName), BuiltInVoices.All, _log.Write);
             var omniVoice = _omniVoice = new OmniVoiceSynthesizer(voices, speechServer.Lease(), log: _log.Write);
             _tts = new TtsSwitch(
                 AvSpeechWriter.Engine(new AvAudioPlayer(), new AvSpeechOptions { Log = _log.Write }),

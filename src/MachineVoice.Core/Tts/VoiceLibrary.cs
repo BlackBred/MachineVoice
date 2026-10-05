@@ -6,20 +6,23 @@ namespace MachineVoice.Core;
 
 /// <summary>
 /// Saved voice samples in a directory: {id}.wav with {id}.json for the name and the transcript. Drafts wait in a
-/// subdirectory until they are saved; the ones left from an earlier run are deleted.
+/// subdirectory until they are saved; the ones left from an earlier run are deleted. The built-in voices are written
+/// to another subdirectory at start, because the server reads a sample from a file.
 /// </summary>
 public sealed class VoiceLibrary
 {
     public const string DirectoryName = "voices";
     public const int MaxName = 64;
     const string DraftsName = "drafts";
+    const string BuiltInName = "builtin";
 
     readonly object _gate = new();
     readonly string _directory;
     readonly string _drafts;
+    readonly IReadOnlyList<VoiceDto> _builtIn;
     readonly Action<string>? _log;
 
-    public VoiceLibrary(string directory, Action<string>? log = null)
+    public VoiceLibrary(string directory, IReadOnlyList<BuiltInVoice>? builtIn = null, Action<string>? log = null)
     {
         _directory = directory;
         _drafts = Path.Combine(directory, DraftsName);
@@ -33,21 +36,23 @@ public sealed class VoiceLibrary
         {
             log?.Invoke($"Old voice drafts were not deleted: {ex.Message}");
         }
+
+        _builtIn = Install(builtIn ?? []);
     }
 
-    /// <summary>Oldest first.</summary>
+    /// <summary>The built-in voices first, then the saved ones, oldest first.</summary>
     public IReadOnlyList<VoiceDto> List()
     {
         lock (_gate)
         {
             if (!Directory.Exists(_directory))
-                return [];
-            return Directory.EnumerateFiles(_directory, "*.json")
-                .Select(path => Read(_directory, Path.GetFileNameWithoutExtension(path)))
-                .OfType<(VoiceDto Voice, DateTimeOffset Created)>()
-                .OrderBy(entry => entry.Created)
-                .ThenBy(entry => entry.Voice.Name, StringComparer.CurrentCulture)
-                .Select(entry => entry.Voice)
+                return _builtIn;
+            return _builtIn.Concat(Directory.EnumerateFiles(_directory, "*.json")
+                    .Select(path => Read(_directory, Path.GetFileNameWithoutExtension(path)))
+                    .OfType<(VoiceDto Voice, DateTimeOffset Created)>()
+                    .OrderBy(entry => entry.Created)
+                    .ThenBy(entry => entry.Voice.Name, StringComparer.CurrentCulture)
+                    .Select(entry => entry.Voice))
                 .ToList();
         }
     }
@@ -56,6 +61,8 @@ public sealed class VoiceLibrary
     {
         if (!ValidId(id))
             return null;
+        if (_builtIn.FirstOrDefault(voice => voice.Id == id) is { } builtIn)
+            return builtIn;
         lock (_gate)
             return Read(_directory, id)?.Voice;
     }
@@ -102,6 +109,61 @@ public sealed class VoiceLibrary
             File.Delete(Path.Combine(_directory, id + ".wav"));
             return true;
         }
+    }
+
+    /// <summary>A sample that cannot be written is left out; samples of voices the app no longer has are deleted.</summary>
+    List<VoiceDto> Install(IReadOnlyList<BuiltInVoice> voices)
+    {
+        var directory = Path.Combine(_directory, BuiltInName);
+        var installed = new List<VoiceDto>();
+        try
+        {
+            if (voices.Count > 0)
+            {
+                CreateDirectory(_directory);
+                CreateDirectory(directory);
+            }
+            else if (!Directory.Exists(directory))
+            {
+                return installed;
+            }
+
+            foreach (var stale in Directory.EnumerateFiles(directory)
+                         .Where(path => voices.All(voice => voice.Id + ".wav" != Path.GetFileName(path))))
+                File.Delete(stale);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log?.Invoke($"Built-in voices are not installed: {ex.Message}");
+            return installed;
+        }
+
+        foreach (var voice in voices.Where(voice => ValidId(voice.Id)))
+        {
+            var audio = Path.Combine(directory, voice.Id + ".wav");
+            try
+            {
+                using (var source = voice.Open())
+                {
+                    if (!File.Exists(audio) || new FileInfo(audio).Length != source.Length)
+                    {
+                        var temp = audio + ".tmp";
+                        using (var target = File.Create(temp))
+                            source.CopyTo(target);
+                        AppLayout.SetPrivateFile(temp);
+                        File.Move(temp, audio, overwrite: true);
+                    }
+                }
+
+                installed.Add(new VoiceDto { Id = voice.Id, Name = voice.Name, AudioPath = audio, Text = voice.Text, BuiltIn = true });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _log?.Invoke($"Built-in voice {voice.Id} is not installed: {ex.Message}");
+            }
+        }
+
+        return installed;
     }
 
     static bool ValidId(string id) =>

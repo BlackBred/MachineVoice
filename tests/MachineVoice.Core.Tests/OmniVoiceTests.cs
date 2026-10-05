@@ -208,6 +208,53 @@ public class VoiceLibraryTests
         Assert.False(File.Exists(saved.AudioPath));
         Assert.Empty(restarted.List());
     }
+
+    [Fact]
+    public async Task BuiltInVoices_AreWrittenToDisk_ListedFirst_AndCannotBeDeleted()
+    {
+        await using var root = new TempRoot();
+        var directory = Path.Combine(root.Path, "voices");
+        var stale = Path.Combine(directory, "builtin", "gone.wav");
+        Directory.CreateDirectory(Path.GetDirectoryName(stale)!);
+        File.WriteAllText(stale, "old");
+        var changed = Path.Combine(directory, "builtin", "bass.wav");
+        File.WriteAllText(changed, "an older, longer sample");
+        var library = new VoiceLibrary(directory, [BuiltIn("bass", "Бас", "low"), BuiltIn("alto", "Альт", "high")]);
+        var own = library.Save(library.AddDraft(OmniVoiceEngineTests.Clip(), "Свой.").Id, "Свой")!;
+
+        Assert.Equal(["bass", "alto", own.Id], library.List().Select(voice => voice.Id));
+        Assert.False(File.Exists(stale));
+        var bass = library.Find("bass")!;
+        Assert.True(bass.BuiltIn);
+        Assert.Equal("Бас", bass.Name);
+        Assert.Equal(VoiceStudio.SampleText, bass.Text);
+        Assert.Equal("low", File.ReadAllText(bass.AudioPath));
+        Assert.False(own.BuiltIn);
+
+        Assert.False(library.Delete("bass"));
+        Assert.True(File.Exists(bass.AudioPath));
+        Assert.Equal(["bass", "alto"], new VoiceLibrary(directory, [BuiltIn("bass", "Бас", "low"), BuiltIn("alto", "Альт", "high")])
+            .List().Where(voice => voice.BuiltIn).Select(voice => voice.Id));
+    }
+
+    [Fact]
+    public void EveryBuiltInVoice_HasASampleInTheAssembly()
+    {
+        Assert.Equal(12, BuiltInVoices.All.Count);
+        Assert.Equal(BuiltInVoices.All.Count, BuiltInVoices.All.Select(voice => voice.Id).Distinct().Count());
+        foreach (var voice in BuiltInVoices.All)
+        {
+            using var stream = voice.Open();
+            var header = new byte[12];
+            stream.ReadExactly(header);
+            Assert.Equal("RIFF", Encoding.ASCII.GetString(header, 0, 4));
+            Assert.Equal("WAVE", Encoding.ASCII.GetString(header, 8, 4));
+            Assert.InRange(stream.Length, 100_000, 1_000_000);
+        }
+    }
+
+    internal static BuiltInVoice BuiltIn(string id, string name, string audio) =>
+        new(id, name, VoiceStudio.SampleText, () => new MemoryStream(Encoding.UTF8.GetBytes(audio)));
 }
 
 public class VoiceCommandsTests
@@ -254,6 +301,22 @@ public class VoiceCommandsTests
         var failed = await client.CreateVoiceAsync();
         Assert.Equal(ProtocolErrors.Unavailable, failed.Error);
         Assert.Equal("connection refused", failed.Detail);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task BuiltInVoice_IsListed_AndDeletingItIsRejected()
+    {
+        await using var root = new TempRoot();
+        var library = new VoiceLibrary(Path.Combine(root.Path, "voices"), [VoiceLibraryTests.BuiltIn("bass", "Бас", "low")]);
+        var host = await TestHost.StartAsync(root.Path, new ManualTtsEngine(), voices: new FakeStudio(library));
+        await using var client = await host.ConnectInProcessAsync();
+
+        var voice = Assert.Single((await client.ListVoicesAsync()).Voices!);
+        Assert.Equal("bass", voice.Id);
+        Assert.True(voice.BuiltIn);
+        Assert.Equal(ProtocolErrors.InvalidArgument, (await client.DeleteVoiceAsync("bass")).Error);
+        Assert.Single((await client.ListVoicesAsync()).Voices!);
         await host.DisposeAsync();
     }
 

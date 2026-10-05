@@ -608,13 +608,15 @@ sealed class SpeechEngine : IAsyncDisposable
         return new ResultMessage { Id = id, Ok = true, Voice = saved, Voices = [.. _voices.List()] };
     }
 
-    /// <summary>When OmniVoice used the voice, it goes back to a random one.</summary>
+    /// <summary>When OmniVoice used the voice, it goes back to a random one. Built-in voices stay.</summary>
     ResultMessage DeleteVoice(string id, string voiceId)
     {
         if (string.IsNullOrWhiteSpace(voiceId))
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (_voices is null)
             return Fail(id, ProtocolErrors.InvalidState);
+        if (_voices.List().Any(voice => voice.Id == voiceId && voice.BuiltIn))
+            return Fail(id, ProtocolErrors.InvalidArgument);
         if (!_voices.Delete(voiceId))
             return Fail(id, ProtocolErrors.NotFound);
 

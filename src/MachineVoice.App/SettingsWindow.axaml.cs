@@ -273,7 +273,7 @@ public partial class SettingsWindow : Window
     {
         var voice = SelectedVoice();
         OmniPlay.IsEnabled = voice is not null;
-        OmniDelete.IsEnabled = voice is not null;
+        OmniDelete.IsEnabled = voice is { BuiltIn: false };
         OmniDelete.Content = _confirmDelete ? "Точно удалить?" : "Удалить";
     }
 
@@ -336,7 +336,7 @@ public partial class SettingsWindow : Window
             if (result is { Ok: true, Voice: { } draft })
             {
                 _draft = draft;
-                DraftName.Text = $"Голос {_voices.Count + 1}";
+                DraftName.Text = $"Голос {_voices.Count(voice => !voice.BuiltIn) + 1}";
                 DraftPanel.IsVisible = true;
                 NewVoiceStatus.Text = "Вот так он звучит. Сохраните его или нажмите «Другой вариант».";
                 Play(draft);

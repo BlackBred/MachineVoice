@@ -8,6 +8,9 @@
     <EmbeddedResource Include="..\..\integrations\cursor\hook.sh">
       <LogicalName>MachineVoice.Core.Cursor.hook.sh</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Tts\Voices\*.wav">
+      <LogicalName>MachineVoice.Core.Voices.%(Filename).wav</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
