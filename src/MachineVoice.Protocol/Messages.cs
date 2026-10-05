@@ -39,6 +39,13 @@ public sealed class SetPlaybackRateCommand : ClientMessage
     public double? Rate { get; init; }
 }
 
+/// <summary>Moves the response being read to <see cref="Position"/> seconds of its audio; a pause stays a pause.</summary>
+public sealed class SeekCommand : ClientMessage
+{
+    public string Type { get; init; } = "seek";
+    public double? Position { get; init; }
+}
+
 public sealed class ListenCommand : ClientMessage
 {
     public string Type { get; init; } = "listen";
@@ -151,6 +158,19 @@ public sealed class PlayerProgressEvent : EventMessage
     public string ItemId { get; init; } = "";
     public int WordIndex { get; init; }
     public string Word { get; init; } = "";
+}
+
+/// <summary>
+/// Where the audio of the response is, in seconds of audio (the playback rate does not change them). The duration
+/// includes an estimate for the part that is not synthesized yet, so it may change while the response plays.
+/// A duration of 0 means the engine cannot tell (the plain system voice); then the progress comes from the words.
+/// </summary>
+public sealed class PlayerPositionEvent : EventMessage
+{
+    public string Type { get; init; } = "player.position";
+    public string ItemId { get; init; } = "";
+    public double Position { get; init; }
+    public double Duration { get; init; }
 }
 
 public sealed class QueueChangedEvent : EventMessage

@@ -97,6 +97,17 @@ public sealed class AvAudioPlayer : IAudioPlayer
             ReleasePlayer();
     }
 
+    public void Seek(double position)
+    {
+        lock (_gate)
+        {
+            if (_player == IntPtr.Zero || !double.IsFinite(position))
+                return;
+            var duration = SendDouble(_player, Sel("duration"));
+            SendVoid(_player, Sel("setCurrentTime:"), Math.Clamp(position, 0, Math.Max(duration, 0)));
+        }
+    }
+
     /// <summary>0.5..2, the range of AVAudioPlayer; the pitch stays the same.</summary>
     public double Rate
     {

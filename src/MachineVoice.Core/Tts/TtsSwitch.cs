@@ -6,9 +6,10 @@ namespace MachineVoice.Core;
 /// Routes speech to the engine chosen in the settings. A change applies from the next utterance; the one being
 /// read stays on its engine. When the neural engine fails, the system voice reads the rest of the utterance;
 /// when the system voice fails too, the last resort does. The Qwen engine is created the first time it is
-/// selected. Owns all engines.
+/// selected. Owns all engines. After a fallback the times continue from where the failed engine stopped, and a
+/// seek reaches only the rest that the next engine reads.
 /// </summary>
-public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
+public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposable
 {
     // Engines are called outside _gate: AVSpeechSynthesizer may wait for the main queue, where its callbacks
     // run and would wait for _gate in turn.
@@ -35,6 +36,7 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
 
     public event EventHandler<TtsProgressEventArgs>? Progress;
     public event EventHandler<TtsCompletedEventArgs>? Completed;
+    public event EventHandler<TtsPositionEventArgs>? PositionChanged;
 
     public void Apply(TtsSettingsDto settings)
     {
@@ -67,7 +69,7 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             engine = _settings.Engine == TtsEngineKind.Qwen && _qwen is not null ? _qwen : _system;
             previous = _route?.Engine;
-            _route = new Route(engine, utteranceId, 0);
+            _route = new Route(engine, utteranceId, 0, 0);
         }
 
         if (previous is not null && previous != engine)
@@ -78,6 +80,19 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
     public void Pause() => Routed()?.Pause();
 
     public void Resume() => Routed()?.Resume();
+
+    public void Seek(double position)
+    {
+        ISeekableTtsEngine? engine;
+        double offset;
+        lock (_gate)
+        {
+            engine = _route?.Engine as ISeekableTtsEngine;
+            offset = _route?.TimeOffset ?? 0;
+        }
+
+        engine?.Seek(Math.Max(position - offset, 0));
+    }
 
     public void Stop()
     {
@@ -120,6 +135,24 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
         engine.Completed += (_, args) => OnCompleted(engine, args);
         if (engine is IFallibleTtsEngine fallible)
             fallible.Failed += (_, args) => OnFailed(engine, args);
+        if (engine is ISeekableTtsEngine seekable)
+            seekable.PositionChanged += (_, args) => OnPosition(engine, args);
+    }
+
+    void OnPosition(ITtsEngine engine, TtsPositionEventArgs args)
+    {
+        double offset;
+        lock (_gate)
+        {
+            if (!Matches(engine, args.UtteranceId))
+                return;
+            offset = _route!.TimeOffset;
+            _route.Position = args.Position + offset;
+        }
+
+        PositionChanged?.Invoke(this, offset == 0
+            ? args
+            : new TtsPositionEventArgs(args.UtteranceId, args.Position + offset, args.Duration + offset));
     }
 
     void OnProgress(ITtsEngine engine, TtsProgressEventArgs args)
@@ -155,7 +188,8 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
             if (!Matches(engine, args.UtteranceId))
                 return;
             next = engine == _system ? _lastResort : engine == _qwen ? _system : null;
-            _route = next is null ? null : new Route(next, args.UtteranceId, _route!.WordOffset + args.WordOffset);
+            var failed = _route!;
+            _route = next is null ? null : new Route(next, args.UtteranceId, failed.WordOffset + args.WordOffset, failed.Position);
         }
 
         if (next is null)
@@ -163,6 +197,10 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
             Completed?.Invoke(this, new TtsCompletedEventArgs(args.UtteranceId));
             return;
         }
+
+        // Without times from the next engine the progress goes back to words.
+        if (next is not ISeekableTtsEngine)
+            PositionChanged?.Invoke(this, new TtsPositionEventArgs(args.UtteranceId, 0, 0));
 
         if (string.IsNullOrWhiteSpace(args.RemainingText))
         {
@@ -185,5 +223,10 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
     bool Matches(ITtsEngine engine, string utteranceId) =>
         _route is { } route && route.Engine == engine && route.Id == utteranceId;
 
-    sealed record Route(ITtsEngine Engine, string Id, int WordOffset);
+    /// <param name="TimeOffset">Seconds of the utterance read before <paramref name="Engine"/> took over.</param>
+    sealed record Route(ITtsEngine Engine, string Id, int WordOffset, double TimeOffset)
+    {
+        /// <summary>The last position in the whole utterance; guarded by _gate.</summary>
+        public double Position { get; set; } = TimeOffset;
+    }
 }

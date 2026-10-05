@@ -20,6 +20,9 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> SetPlaybackRateAsync(double rate, CancellationToken cancellationToken = default) =>
         SendAsync(new SetPlaybackRateCommand { Version = ProtocolVersion.Current, Id = NewId(), Rate = rate }, cancellationToken);
 
+    public Task<ResultMessage> SeekAsync(double position, CancellationToken cancellationToken = default) =>
+        SendAsync(new SeekCommand { Version = ProtocolVersion.Current, Id = NewId(), Position = position }, cancellationToken);
+
     public Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default) =>
         SendAsync(new ListenCommand { Version = ProtocolVersion.Current, Id = NewId(), ItemId = itemId }, cancellationToken);
 

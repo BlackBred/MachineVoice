@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using MachineVoice.Platform.MacOS;
@@ -20,6 +21,8 @@ public partial class OverlayWindow : Window
         InitializeComponent();
     }
 
+    /// <summary>A click on the progress bar: 0..1 of the response.</summary>
+    public event Action<double>? SeekRequested;
     public event Action? SlowerRequested;
     public event Action? FasterRequested;
     public event Action? PauseResumeRequested;
@@ -55,7 +58,7 @@ public partial class OverlayWindow : Window
             PauseIcon.Data = Glyph(paused ? "PlayGlyph" : "PauseGlyph");
             ToolTip.SetTip(PauseButton, paused ? "Продолжить" : "Пауза");
             RateText.Text = Labels.Rate(state.Settings.Tts.PlaybackRate);
-            ProgressLine.IsVisible = true;
+            SeekArea.IsVisible = true;
             PlaybackButtons.IsVisible = true;
             ConfirmButtons.IsVisible = false;
             UpdateProgress(state);
@@ -66,7 +69,7 @@ public partial class OverlayWindow : Window
         {
             TitleText.Text = Labels.Title(pending);
             TopicText.Text = "Новый ответ: " + Labels.Topic(pending);
-            ProgressLine.IsVisible = false;
+            SeekArea.IsVisible = false;
             PlaybackButtons.IsVisible = false;
             ConfirmButtons.IsVisible = true;
         }
@@ -103,6 +106,15 @@ public partial class OverlayWindow : Window
         Position = new PixelPoint(
             area.X + (area.Width - size.Width) / 2,
             area.Y + area.Height - size.Height - (int)(BottomOffset * screen.Scaling));
+    }
+
+    void OnSeek(object? sender, PointerPressedEventArgs e)
+    {
+        var width = ProgressLine.Bounds.Width;
+        if (width <= 0 || !e.GetCurrentPoint(ProgressLine).Properties.IsLeftButtonPressed)
+            return;
+        e.Handled = true;
+        SeekRequested?.Invoke(Math.Clamp(e.GetPosition(ProgressLine).X / width, 0, 1));
     }
 
     void OnSlower(object? sender, RoutedEventArgs e) => SlowerRequested?.Invoke();

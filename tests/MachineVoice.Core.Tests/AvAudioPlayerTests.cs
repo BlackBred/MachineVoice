@@ -67,6 +67,25 @@ public class AvAudioPlayerTests
         Assert.Equal(2, player.Rate);
     }
 
+    [MacOSFact(Timeout = 20000)]
+    public async Task Seek_MovesAPausedClip_ThatPlaysFromThere()
+    {
+        using var player = new AvAudioPlayer(volume: 0);
+        player.Play(SilentWav(seconds: 2));
+        player.Pause();
+        player.Seek(1.7);
+        await Task.Delay(200);
+        Assert.Equal(1.7, player.State.Position, precision: 2);
+        Assert.True(player.State.Active);
+
+        player.Resume();
+        var started = Environment.TickCount64;
+        while (player.State.Active && Environment.TickCount64 - started < 5000)
+            await Task.Delay(10);
+        Assert.False(player.State.Active);
+        Assert.InRange(Environment.TickCount64 - started, 100, 900);
+    }
+
     [MacOSFact]
     public void Play_RejectsDataThatIsNotAudio()
     {

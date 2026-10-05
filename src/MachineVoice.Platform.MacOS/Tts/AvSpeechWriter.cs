@@ -68,9 +68,12 @@ public sealed class AvSpeechWriter : IChunkSynthesizer, IConfigurableTts, IDispo
         ByBlock[_markerBlock] = this;
     }
 
-    /// <summary>The engine that speaks with the macOS voice through <paramref name="player"/>.</summary>
+    /// <summary>
+    /// The engine that speaks with the macOS voice through <paramref name="player"/>. The voice writes far faster
+    /// than real time, so it writes the whole response ahead: the duration a seek works with is then exact.
+    /// </summary>
     public static ChunkedAudioEngine Engine(IAudioPlayer player, AvSpeechOptions? options = null) =>
-        new(player, new AvSpeechWriter(options), Name, ChunkTimeout, options?.Log);
+        new(player, new AvSpeechWriter(options), Name, ChunkTimeout, options?.Log, lookahead: int.MaxValue);
 
     /// <summary>The voice rate applies from the next utterance.</summary>
     public void Apply(TtsSettingsDto settings)

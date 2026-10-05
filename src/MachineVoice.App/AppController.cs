@@ -118,6 +118,7 @@ sealed class AppController
     void CreateUi()
     {
         _overlay = new OverlayWindow();
+        _overlay.SeekRequested += Seek;
         _overlay.SlowerRequested += () => StepRate(-RateStep);
         _overlay.FasterRequested += () => StepRate(RateStep);
         _overlay.PauseResumeRequested += PauseResume;
@@ -181,7 +182,7 @@ sealed class AppController
         if (_state.NeedsSnapshot)
             _ = ResyncAsync();
 
-        if (message is PlayerProgressEvent)
+        if (message is PlayerProgressEvent or PlayerPositionEvent)
         {
             _overlay?.UpdateProgress(_state);
             return;
@@ -229,6 +230,18 @@ sealed class AppController
             Send(client => client.PauseAsync());
         else
             Send(client => client.ResumeAsync());
+    }
+
+    /// <summary>
+    /// Exact time under the click. Snapping to the nearest word or pause would be possible, but is not done for now.
+    /// The plain system voice reports no duration, so there is nothing to seek in.
+    /// </summary>
+    void Seek(double fraction)
+    {
+        var duration = _state.Duration;
+        if (_state.Current is null || duration <= 0)
+            return;
+        Send(client => client.SeekAsync(fraction * duration));
     }
 
     void StepRate(double step)

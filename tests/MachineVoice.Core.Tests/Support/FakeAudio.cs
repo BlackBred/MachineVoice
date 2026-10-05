@@ -61,6 +61,17 @@ sealed class FakeAudioPlayer : IAudioPlayer
         }
     }
 
+    public List<double> Seeks { get; } = [];
+
+    public void Seek(double position)
+    {
+        lock (_gate)
+        {
+            Seeks.Add(position);
+            _position = position;
+        }
+    }
+
     public AudioPlayback State
     {
         get

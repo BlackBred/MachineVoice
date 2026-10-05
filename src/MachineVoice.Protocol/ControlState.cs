@@ -45,6 +45,12 @@ public sealed class ControlState
     /// <summary>Index of the word being spoken in <see cref="Current"/>, or -1.</summary>
     public int WordIndex { get; private set; } = -1;
 
+    /// <summary>Seconds of audio played in <see cref="Current"/>.</summary>
+    public double Position { get; private set; }
+
+    /// <summary>Seconds of audio in <see cref="Current"/>, partly estimated; 0 when the engine cannot tell.</summary>
+    public double Duration { get; private set; }
+
     /// <summary>An event referred to an item this mirror does not know; take a new snapshot.</summary>
     public bool NeedsSnapshot { get; private set; }
 
@@ -63,7 +69,7 @@ public sealed class ControlState
         _sources.Clear();
         foreach (var source in snapshot.Sources)
             _sources[source.Name] = source;
-        WordIndex = -1;
+        ClearProgress();
         NeedsSnapshot = false;
 
         foreach (var item in Queue)
@@ -89,6 +95,12 @@ public sealed class ControlState
                 if (Current?.Id != progress.ItemId)
                     return false;
                 WordIndex = progress.WordIndex;
+                return true;
+            case PlayerPositionEvent position:
+                if (Current?.Id != position.ItemId)
+                    return false;
+                Position = position.Position;
+                Duration = position.Duration;
                 return true;
             case QueueChangedEvent queue:
                 OnQueue(queue.Items);
@@ -138,16 +150,30 @@ public sealed class ControlState
     /// <summary>Total number of words in the current speech, for a progress estimate.</summary>
     public int CurrentWordCount => Current is null ? 0 : CountWords(Current.Speech ?? Current.Text);
 
-    /// <summary>0..1, or null when nothing is being read.</summary>
+    /// <summary>
+    /// 0..1, or null when nothing is being read. By time when the engine reports it, otherwise by words.
+    /// <see cref="Position"/> is <see cref="Progress"/> times <see cref="Duration"/>, so a click on a progress bar maps to a seek.
+    /// </summary>
     public double? Progress
     {
         get
         {
+            if (Current is null)
+                return null;
+            if (Duration > 0)
+                return Math.Clamp(Position / Duration, 0, 1);
             var total = CurrentWordCount;
-            if (Current is null || total == 0)
+            if (total == 0)
                 return null;
             return Math.Clamp((WordIndex + 1) / (double)total, 0, 1);
         }
+    }
+
+    void ClearProgress()
+    {
+        WordIndex = -1;
+        Position = 0;
+        Duration = 0;
     }
 
     void OnPlayer(PlayerStateEvent state)
@@ -156,7 +182,7 @@ public sealed class ControlState
         if (state.State == PlayerState.Idle || state.ItemId is null)
         {
             Current = null;
-            WordIndex = -1;
+            ClearProgress();
             return;
         }
 
@@ -165,7 +191,7 @@ public sealed class ControlState
         if (Current?.Id == state.ItemId)
             return;
 
-        WordIndex = -1;
+        ClearProgress();
         if (_live.TryGetValue(state.ItemId, out var item))
         {
             Current = item;

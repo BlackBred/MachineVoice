@@ -29,6 +29,13 @@ public class ProtocolCodecTests
         Assert.Contains("\"type\":\"setPlaybackRate\"", rate);
         Assert.Equal(1.5, Assert.IsType<SetPlaybackRateCommand>(ProtocolCodec.ReadClient(rate).Message).Rate);
 
+        var seek = ProtocolCodec.Write(new SeekCommand { Version = ProtocolVersion.Current, Id = "1", Position = 12.5 });
+        Assert.Contains("\"type\":\"seek\"", seek);
+        Assert.Equal(12.5, Assert.IsType<SeekCommand>(ProtocolCodec.ReadClient(seek).Message).Position);
+        var position = ProtocolCodec.Write(new PlayerPositionEvent { ItemId = "i", Position = 1.5, Duration = 9 });
+        Assert.Contains("\"type\":\"player.position\"", position);
+        Assert.Equal(9, Assert.IsType<PlayerPositionEvent>(ProtocolCodec.ReadServer(position)).Duration);
+
         var legacy = ProtocolCodec.Write(new ResultMessage
         {
             Id = "1",
@@ -73,6 +80,7 @@ public class ProtocolCodecTests
             new SkipCommand { Version = 1, Id = "k" },
             new SetModeCommand { Version = 1, Id = "m", Mode = PlaybackMode.Silent },
             new SetPlaybackRateCommand { Version = 1, Id = "v", Rate = 1.25 },
+            new SeekCommand { Version = 1, Id = "e", Position = 12.5 },
             new ListenCommand { Version = 1, Id = "l", ItemId = "item" },
             new DismissCommand { Version = 1, Id = "d", ItemId = "item" },
             new OpenChatCommand { Version = 1, Id = "o", ItemId = "item" },
@@ -97,6 +105,7 @@ public class ProtocolCodecTests
             new SnapshotEvent { Snapshot = new SnapshotDto { Player = PlayerState.Idle, Mode = PlaybackMode.Auto } },
             new PlayerStateEvent { State = PlayerState.Paused, ItemId = "item" },
             new PlayerProgressEvent { ItemId = "item", WordIndex = 2, Word = "word" },
+            new PlayerPositionEvent { ItemId = "item", Position = 1.5, Duration = 9 },
             new QueueChangedEvent { Items = [new SpeechItemDto { Id = "item", GenerationId = "g", Source = "cursor", Text = "t" }] },
             new HistoryAppendedEvent
             {

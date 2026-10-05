@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -125,6 +126,91 @@ public class ChunkedAudioEngineTests
         Assert.Equal("finished", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(3, synthesizer.Begun);
         Assert.Equal(3, synthesizer.Ended);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Seek_IntoAChunkNotSynthesized_SkipsToIt_AndStartsAtTheTime()
+    {
+        var player = new FakeAudioPlayer();
+        var texts = new ConcurrentQueue<string>();
+        var synthesizer = new FakeSynthesizer(text =>
+        {
+            texts.Enqueue(text);
+            return new SpeechAudio([1, 2, 3]);
+        });
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5), lookahead: 0);
+        var recorder = new TtsRecorder(tts);
+        var positions = new ConcurrentQueue<TtsPositionEventArgs>();
+        tts.PositionChanged += (_, args) => positions.Enqueue(args);
+
+        // The fake clips last 1 s, so the chunks of the same length are estimated at 1 s each.
+        tts.Speak("u1", "Первая фраза. Вторая фраза. Третья фраза.");
+        await player.WaitForPlayAsync(1);
+        tts.Seek(2.5);
+        await player.WaitForPlayAsync(2);
+
+        Assert.Equal(new[] { "Первая фраза.", "Третья фраза." }, texts);
+        Assert.Equal(0.5, player.Seeks.Last(), 6);
+        Assert.Contains(positions, p => Math.Abs(p.Position - 2.5) < 1e-6 && Math.Abs(p.Duration - 3) < 1e-6);
+        await WaitForWordAsync(recorder, 5);
+        player.End();
+
+        Assert.Equal("u1", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.DoesNotContain(recorder.Words, w => w.WordIndex is 2 or 3);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Seek_WithinTheClip_MovesThePlayer_AndBackReplaysAnEarlierChunk()
+    {
+        var player = new FakeAudioPlayer();
+        var synthesizer = new FakeSynthesizer(text => new SpeechAudio(text.StartsWith("Первая") ? [1] : [2]));
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+        var recorder = new TtsRecorder(tts);
+
+        tts.Speak("u1", "Первая фраза. Вторая фраза.");
+        await player.WaitForPlayAsync(1);
+        tts.Seek(0.4);
+        Assert.Equal(new[] { 0.4 }, player.Seeks);
+        Assert.Equal(1, player.PlayedCount);
+
+        player.End();
+        await player.WaitForPlayAsync(2);
+        tts.Seek(0.25);
+        await player.WaitForPlayAsync(3);
+
+        Assert.Equal(new byte[][] { [1], [2], [1] }, player.Played);
+        Assert.Equal(0.25, player.Seeks.Last(), 6);
+        player.End();
+        await player.WaitForPlayAsync(4);
+        player.End();
+        Assert.Equal("u1", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Seek_DuringAPause_StaysPaused_UntilResume()
+    {
+        var player = new FakeAudioPlayer();
+        using var tts = new ChunkedAudioEngine(player, new FakeSynthesizer(), "fake", TimeSpan.FromSeconds(5));
+
+        tts.Speak("u1", "Первая фраза. Вторая фраза.");
+        await player.WaitForPlayAsync(1);
+        tts.Pause();
+        tts.Seek(1.5);
+        await Task.Delay(200);
+        Assert.Equal(1, player.PlayedCount);
+        Assert.False(player.IsActive);
+
+        tts.Resume();
+        await player.WaitForPlayAsync(2);
+        Assert.False(player.IsPaused);
+        Assert.Equal(0.5, player.Seeks.Last(), 6);
+    }
+
+    [Fact]
+    public void WavSeconds_ReadsTheHeader()
+    {
+        Assert.Equal(0.5, WavFile.Seconds(WavFile.Mono16(new float[11025], 22050)));
+        Assert.Null(WavFile.Seconds([1, 2, 3]));
     }
 
     static async Task WaitForWordAsync(TtsRecorder recorder, int wordIndex)
@@ -410,6 +496,30 @@ public class TtsSwitchTests
     }
 
     [Fact]
+    public void Seek_AfterAFallback_CountsTheTimeTheFailedEngineRead()
+    {
+        var system = new ManualTtsEngine();
+        var qwen = new ManualNeuralEngine();
+        using var tts = new TtsSwitch(system, () => qwen);
+        var positions = new List<TtsPositionEventArgs>();
+        tts.PositionChanged += (_, args) => positions.Add(args);
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
+
+        tts.Speak("u", "Раз два. Три четыре.");
+        qwen.EmitPosition(1.5, 4);
+        tts.Seek(1);
+        Assert.Equal(new[] { 1.0 }, qwen.Seeks);
+
+        qwen.Fail("Три четыре.", wordOffset: 2);
+        system.EmitPosition(0.5, 2);
+        tts.Seek(3);
+        tts.Seek(0.2);
+
+        Assert.Equal(new[] { 1.5, 0.0 }, system.Seeks);
+        Assert.Equal(new[] { (1.5, 4.0), (2.0, 3.5) }, positions.Select(p => (p.Position, p.Duration)));
+    }
+
+    [Fact]
     public void Stop_IgnoresLateEventsOfTheStoppedUtterance()
     {
         var system = new ManualTtsEngine();
@@ -429,7 +539,7 @@ public class TtsSwitchTests
         Assert.False(recorder.Completed.Task.IsCompleted);
     }
 
-    sealed class ManualNeuralEngine : IFallibleTtsEngine, IConfigurableTts
+    sealed class ManualNeuralEngine : IFallibleTtsEngine, ISeekableTtsEngine, IConfigurableTts
     {
         readonly ManualTtsEngine _inner = new();
 
@@ -437,11 +547,17 @@ public class TtsSwitchTests
         {
             _inner.Progress += (_, args) => Progress?.Invoke(this, args);
             _inner.Completed += (_, args) => Completed?.Invoke(this, args);
+            _inner.PositionChanged += (_, args) => PositionChanged?.Invoke(this, args);
         }
 
         public event EventHandler<TtsProgressEventArgs>? Progress;
         public event EventHandler<TtsCompletedEventArgs>? Completed;
         public event EventHandler<TtsFailedEventArgs>? Failed;
+        public event EventHandler<TtsPositionEventArgs>? PositionChanged;
+
+        public List<double> Seeks => _inner.Seeks;
+        public void Seek(double position) => _inner.Seek(position);
+        public void EmitPosition(double position, double duration) => _inner.EmitPosition(position, duration);
 
         public TtsSettingsDto? Applied { get; private set; }
         public string? UtteranceId => _inner.UtteranceId;

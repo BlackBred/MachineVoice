@@ -61,6 +61,8 @@ sealed class SpeechEngine : IAsyncDisposable
         _log = log;
         _tts.Progress += (_, args) => Post(new ProgressWork(args));
         _tts.Completed += (_, args) => Post(new CompletedWork(args.UtteranceId));
+        if (_tts is ISeekableTtsEngine seekable)
+            seekable.PositionChanged += (_, args) => Post(new PositionWork(args));
     }
 
     public void Start()
@@ -191,6 +193,9 @@ sealed class SpeechEngine : IAsyncDisposable
                 break;
             case ProgressWork progress:
                 OnProgress(progress.Args);
+                break;
+            case PositionWork position:
+                OnPosition(position.Args);
                 break;
             case CompletedWork completed:
                 OnCompleted(completed.UtteranceId);
@@ -505,6 +510,7 @@ sealed class SpeechEngine : IAsyncDisposable
             SkipCommand => Skip(command.Id),
             SetModeCommand setMode => ApplyMode(command.Id, setMode.Mode),
             SetPlaybackRateCommand setRate => ApplyPlaybackRate(command.Id, setRate.Rate),
+            SeekCommand seek => Seek(command.Id, seek.Position),
             ListenCommand listen => Listen(command.Id, listen.ItemId),
             DismissCommand dismiss => Dismiss(command.Id, dismiss.ItemId),
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
@@ -550,6 +556,20 @@ sealed class SpeechEngine : IAsyncDisposable
         }
 
         return Fail(id, ProtocolErrors.InvalidState);
+    }
+
+    /// <summary>Exact time; the engine does not snap to a word boundary.</summary>
+    ResultMessage Seek(string id, double? position)
+    {
+        if (position is not { } seconds || !double.IsFinite(seconds) || seconds < 0)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (_current is null || _player is not (PlayerState.Speaking or PlayerState.Paused))
+            return Fail(id, ProtocolErrors.InvalidState);
+        if (_tts is not ISeekableTtsEngine seekable)
+            return Fail(id, ProtocolErrors.InvalidState);
+
+        seekable.Seek(seconds);
+        return Ok(id);
     }
 
     ResultMessage Stop(string id)
@@ -837,7 +857,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
     void OnProgress(TtsProgressEventArgs args)
     {
-        if (_player != PlayerState.Speaking || _current?.Id != args.UtteranceId)
+        // A seek during a pause moves the word too.
+        if (_player is not (PlayerState.Speaking or PlayerState.Paused) || _current?.Id != args.UtteranceId)
             return;
 
         Publish(new PlayerProgressEvent
@@ -845,6 +866,19 @@ sealed class SpeechEngine : IAsyncDisposable
             ItemId = args.UtteranceId,
             WordIndex = args.WordIndex,
             Word = args.Word,
+        });
+    }
+
+    void OnPosition(TtsPositionEventArgs args)
+    {
+        if (_player is not (PlayerState.Speaking or PlayerState.Paused) || _current?.Id != args.UtteranceId)
+            return;
+
+        Publish(new PlayerPositionEvent
+        {
+            ItemId = args.UtteranceId,
+            Position = args.Position,
+            Duration = args.Duration,
         });
     }
 
@@ -1130,6 +1164,11 @@ sealed class SpeechEngine : IAsyncDisposable
     sealed class ProgressWork(TtsProgressEventArgs args) : Work
     {
         public TtsProgressEventArgs Args { get; } = args;
+    }
+
+    sealed class PositionWork(TtsPositionEventArgs args) : Work
+    {
+        public TtsPositionEventArgs Args { get; } = args;
     }
 
     sealed class CompletedWork(string utteranceId) : Work

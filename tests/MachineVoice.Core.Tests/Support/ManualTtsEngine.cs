@@ -2,7 +2,7 @@ using MachineVoice.Core;
 
 namespace MachineVoice.Core.Tests;
 
-sealed class ManualTtsEngine : ITtsEngine
+sealed class ManualTtsEngine : ISeekableTtsEngine
 {
     readonly object _gate = new();
 
@@ -63,5 +63,23 @@ sealed class ManualTtsEngine : ITtsEngine
         }
 
         Completed?.Invoke(this, new TtsCompletedEventArgs(id));
+    }
+
+    public List<double> Seeks { get; } = [];
+
+    public event EventHandler<TtsPositionEventArgs>? PositionChanged;
+
+    public void Seek(double position)
+    {
+        lock (_gate)
+            Seeks.Add(position);
+    }
+
+    public void EmitPosition(double position, double duration)
+    {
+        string id;
+        lock (_gate)
+            id = UtteranceId ?? throw new InvalidOperationException("Not speaking.");
+        PositionChanged?.Invoke(this, new TtsPositionEventArgs(id, position, duration));
     }
 }

@@ -73,6 +73,9 @@ static partial class ObjC
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, float arg);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector, double arg);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, nuint arg);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]

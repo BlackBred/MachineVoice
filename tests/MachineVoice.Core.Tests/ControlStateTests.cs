@@ -24,6 +24,12 @@ public class ControlStateTests
         await mirror.WaitAsync(state => state.WordIndex == 1);
         Assert.InRange(mirror.Read(state => state.Progress)!.Value, 0.01, 0.99);
 
+        tts.EmitPosition(3, 12);
+        await mirror.WaitAsync(state => state.Progress == 0.25);
+        Assert.True((await client.SeekAsync(6)).Ok);
+        Assert.Equal(new[] { 6.0 }, tts.Seeks);
+        Assert.Equal(ProtocolErrors.InvalidArgument, (await client.SeekAsync(-1)).Error);
+
         Assert.True((await client.PauseAsync()).Ok);
         await mirror.MatchesAsync(client);
         var second = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g2", "второй"));
@@ -32,6 +38,7 @@ public class ControlStateTests
         Assert.True((await client.StopAsync()).Ok);
         await mirror.MatchesAsync(client);
         Assert.True(mirror.Read(state => state.Holding));
+        Assert.Equal(ProtocolErrors.InvalidState, (await client.SeekAsync(1)).Error);
 
         Assert.True((await client.ResumeAsync()).Ok);
         await mirror.MatchesAsync(client);
@@ -71,6 +78,24 @@ public class ControlStateTests
         state.Apply(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = "missing" });
         Assert.True(state.NeedsSnapshot);
         Assert.Null(state.Current);
+    }
+
+    [Fact]
+    public void Progress_FollowsTheTime_WhenKnown_AndResetsWithTheNextItem()
+    {
+        var state = new ControlState();
+        state.Reset(new SnapshotDto { Queue = [new SpeechItemDto { Id = "a", Text = "раз два три четыре" }, new SpeechItemDto { Id = "b", Text = "пять" }] });
+        state.Apply(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = "a" });
+        state.Apply(new PlayerProgressEvent { ItemId = "a", WordIndex = 0 });
+        Assert.Equal(0.25, state.Progress);
+
+        state.Apply(new PlayerPositionEvent { ItemId = "a", Position = 6, Duration = 8 });
+        Assert.Equal(0.75, state.Progress);
+        Assert.False(state.Apply(new PlayerPositionEvent { ItemId = "b", Position = 1, Duration = 2 }));
+
+        state.Apply(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = "b" });
+        Assert.Equal(0, state.Duration);
+        Assert.Equal(0, state.Progress);
     }
 
     [Fact]
