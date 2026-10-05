@@ -10,6 +10,12 @@ public interface IAudioPlayer : IDisposable
     void Resume();
     void Stop();
 
+    /// <summary>
+    /// Playback speed, 1 plays the clip as is. Changes the clip that plays and carries over to the next ones;
+    /// <see cref="AudioPlayback.Position"/> stays in seconds of the clip.
+    /// </summary>
+    double Rate { get; set; }
+
     AudioPlayback State { get; }
 }
 

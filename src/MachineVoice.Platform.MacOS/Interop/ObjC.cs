@@ -51,10 +51,23 @@ static partial class ObjC
     public static partial double SendDouble(IntPtr receiver, IntPtr selector);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial uint SendUInt(IntPtr receiver, IntPtr selector);
+
+    /// <summary>A two-word struct comes back in registers on arm64 and x86-64 alike, so no _stret variant.</summary>
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial NSRange SendRange(IntPtr receiver, IntPtr selector);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial void SendVoid(IntPtr receiver, IntPtr selector);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, IntPtr arg);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, float arg);

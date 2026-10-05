@@ -22,7 +22,7 @@ public class QwenEndToEndTests(ITestOutputHelper output)
         await using var root = new TempRoot();
         var volume = float.TryParse(Environment.GetEnvironmentVariable("MACHINEVOICE_QWEN_E2E_VOLUME"), out var v) ? v : 0;
         var log = new List<string>();
-        var tts = new NeuralTtsEngine(
+        var tts = QwenSynthesizer.Engine(
             new AvAudioPlayer(volume),
             new MlxAudioServer(root.Path, line => { lock (log) log.Add(line); }),
             log: line => { lock (log) log.Add(line); });

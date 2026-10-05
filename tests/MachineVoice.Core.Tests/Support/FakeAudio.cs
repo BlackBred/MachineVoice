@@ -9,10 +9,25 @@ sealed class FakeAudioPlayer : IAudioPlayer
     readonly object _gate = new();
     bool _active;
     bool _paused;
+    double _position;
+    double _rate = 1;
 
     public List<byte[]> Played { get; } = [];
     public bool IsPaused { get { lock (_gate) return _paused; } }
     public bool IsActive { get { lock (_gate) return _active; } }
+
+    public double Rate
+    {
+        get { lock (_gate) return _rate; }
+        set { lock (_gate) _rate = value; }
+    }
+
+    /// <summary>Seconds into the clip, out of 1.</summary>
+    public double Position
+    {
+        get { lock (_gate) return _position; }
+        set { lock (_gate) _position = value; }
+    }
 
     public void Play(byte[] audio)
     {
@@ -21,6 +36,7 @@ sealed class FakeAudioPlayer : IAudioPlayer
             Played.Add(audio);
             _active = true;
             _paused = false;
+            _position = 0;
         }
     }
 
@@ -50,7 +66,7 @@ sealed class FakeAudioPlayer : IAudioPlayer
         get
         {
             lock (_gate)
-                return new AudioPlayback(_active, 0, 1);
+                return new AudioPlayback(_active, _position, 1);
         }
     }
 

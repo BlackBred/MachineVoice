@@ -54,9 +54,119 @@ public class SpeechChunksTests
     {
         Assert.Empty(SpeechChunks.Split(" … — "));
     }
+
+    [Fact]
+    public void WordStarts_MapsMarksToTheClientsWords_AndFillsTheGaps()
+    {
+        // Words: Готово, файл, Program, cs. The first mark starts at the quote, "cs" has no mark of its own.
+        var starts = SpeechChunks.WordStarts("«Готово», файл Program.cs.", [(0, 0.1), (10, 0.8), (15, 1.2)]);
+
+        Assert.Equal(new[] { 0.1, 0.8, 1.2, 1.2 }, starts);
+    }
 }
 
-public class NeuralTtsEngineTests
+public class ChunkedAudioEngineTests
+{
+    [Fact(Timeout = 20000)]
+    public async Task PlaybackRate_ReachesThePlayer_WhileAClipPlays()
+    {
+        var player = new FakeAudioPlayer();
+        using var tts = new ChunkedAudioEngine(player, new FakeSynthesizer(), "fake", TimeSpan.FromSeconds(5));
+
+        tts.Speak("u1", "Одна фраза.");
+        await player.WaitForPlayAsync(1);
+        tts.Apply(new TtsSettingsDto { PlaybackRate = 1.5 });
+
+        Assert.Equal(1.5, player.Rate);
+        Assert.True(player.IsActive);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task WordStarts_OfTheSynthesizer_DriveTheProgress()
+    {
+        var player = new FakeAudioPlayer();
+        var synthesizer = new FakeSynthesizer(_ => new SpeechAudio([1, 2, 3], [0, 0.2, 0.7]));
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+        var recorder = new TtsRecorder(tts);
+
+        tts.Speak("u1", "раз два три");
+        await player.WaitForPlayAsync(1);
+
+        // A position-based estimate would still be at the first word (0.3 of 3 words).
+        player.Position = 0.3;
+        await WaitForWordAsync(recorder, 1);
+        player.Position = 0.75;
+        await WaitForWordAsync(recorder, 2);
+        player.End();
+
+        Assert.Equal("u1", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(new[] { "раз", "два", "три" }, recorder.Words.Select(w => w.Word));
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task EverySession_EndsOnce_WhenReplacedStoppedOrFinished()
+    {
+        var player = new FakeAudioPlayer();
+        var synthesizer = new FakeSynthesizer();
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+        var recorder = new TtsRecorder(tts);
+
+        tts.Speak("replaced", "Первая.");
+        tts.Speak("stopped", "Вторая.");
+        Assert.Equal(1, synthesizer.Ended);
+        await player.WaitForPlayAsync(1);
+        tts.Stop();
+        Assert.Equal(2, synthesizer.Ended);
+
+        var played = player.PlayedCount;
+        tts.Speak("finished", "Третья.");
+        await player.WaitForPlayAsync(played + 1);
+        player.End();
+        Assert.Equal("finished", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(3, synthesizer.Begun);
+        Assert.Equal(3, synthesizer.Ended);
+    }
+
+    static async Task WaitForWordAsync(TtsRecorder recorder, int wordIndex)
+    {
+        var deadline = Environment.TickCount64 + 5000;
+        while (!recorder.Words.Any(w => w.WordIndex == wordIndex))
+        {
+            if (Environment.TickCount64 > deadline)
+                throw new TimeoutException($"Word {wordIndex} was not reported.");
+            await Task.Delay(10);
+        }
+    }
+
+    sealed class FakeSynthesizer(Func<string, SpeechAudio>? synthesize = null) : IChunkSynthesizer
+    {
+        int _begun;
+        int _ended;
+
+        Func<string, SpeechAudio>? Synthesize { get; } = synthesize;
+
+        public int Begun => Volatile.Read(ref _begun);
+        public int Ended => Volatile.Read(ref _ended);
+
+        public ISynthesisSession Begin()
+        {
+            Interlocked.Increment(ref _begun);
+            return new Session(this);
+        }
+
+        sealed class Session(FakeSynthesizer owner) : ISynthesisSession
+        {
+            public Task PrepareAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public Task<SpeechAudio> SynthesizeAsync(string text, CancellationToken cancellationToken) =>
+                Task.FromResult(owner.Synthesize?.Invoke(text) ?? new SpeechAudio([1, 2, 3]));
+
+            public void Dispose() => Interlocked.Increment(ref owner._ended);
+        }
+    }
+}
+
+public class QwenEngineTests
 {
     static readonly TtsSettingsDto Qwen = new()
     {
@@ -70,7 +180,7 @@ public class NeuralTtsEngineTests
         var player = new FakeAudioPlayer();
         var server = new FakeSpeechServer();
         var http = new StubHttpHandler((_, body, _) => Task.FromResult(Wav(body)));
-        using var tts = new NeuralTtsEngine(player, server, http);
+        using var tts = QwenSynthesizer.Engine(player, server, http);
         var recorder = new TtsRecorder(tts);
         tts.Apply(Qwen);
 
@@ -101,7 +211,7 @@ public class NeuralTtsEngineTests
         var answer = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         var http = new StubHttpHandler((request, body, _) =>
             request.RequestUri!.AbsolutePath.EndsWith("/audio/speech") ? answer.Task : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
-        using var tts = new NeuralTtsEngine(player, httpHandler: http);
+        using var tts = QwenSynthesizer.Engine(player, httpHandler: http);
         tts.Apply(Qwen);
 
         tts.Speak("u1", "Одна фраза.");
@@ -123,7 +233,7 @@ public class NeuralTtsEngineTests
     {
         var player = new FakeAudioPlayer();
         var http = new StubHttpHandler((_, body, _) => Task.FromResult(Wav(body)));
-        using var tts = new NeuralTtsEngine(player, httpHandler: http);
+        using var tts = QwenSynthesizer.Engine(player, httpHandler: http);
         var recorder = new TtsRecorder(tts);
         tts.Apply(Qwen);
 
@@ -150,7 +260,7 @@ public class NeuralTtsEngineTests
                 ? Wav(body)
                 : new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("model crashed") });
         });
-        using var tts = new NeuralTtsEngine(player, httpHandler: http);
+        using var tts = QwenSynthesizer.Engine(player, httpHandler: http);
         var recorder = new TtsRecorder(tts);
         tts.Apply(Qwen);
 
@@ -171,7 +281,7 @@ public class NeuralTtsEngineTests
     {
         var server = new FakeSpeechServer();
         var http = new StubHttpHandler((_, _, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
-        using var tts = new NeuralTtsEngine(new FakeAudioPlayer(), server, http);
+        using var tts = QwenSynthesizer.Engine(new FakeAudioPlayer(), server, http);
 
         tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.System, Qwen = Qwen.Qwen });
         tts.Apply(Qwen);
@@ -260,6 +370,43 @@ public class TtsSwitchTests
         Assert.Equal(new[] { (0, "Раз"), (3, "четыре") }, recorder.Words.Select(w => (w.WordIndex, w.Word)));
         Assert.True(recorder.Completed.Task.IsCompleted);
         Assert.Equal("u", await recorder.Completed.Task);
+    }
+
+    [Fact]
+    public void SystemVoiceFailure_HandsTheRestToTheLastResort_AndSettingsReachEveryEngine()
+    {
+        var system = new ManualNeuralEngine();
+        var qwen = new ManualNeuralEngine();
+        var lastResort = new ManualTtsEngine();
+        using var tts = new TtsSwitch(system, () => qwen, lastResort: lastResort);
+        var recorder = new TtsRecorder(tts);
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen, PlaybackRate = 1.5 });
+        Assert.Equal(1.5, system.Applied!.PlaybackRate);
+
+        tts.Speak("u", "Раз два. Три четыре. Пять.");
+        qwen.Fail("Три четыре. Пять.", wordOffset: 2);
+        Assert.Equal("u", system.UtteranceId);
+        system.Fail("Пять.", wordOffset: 2);
+        Assert.Equal("Пять.", lastResort.Text);
+
+        lastResort.Emit(0, "Пять");
+        lastResort.Complete();
+        Assert.Equal(new[] { (4, "Пять") }, recorder.Words.Select(w => (w.WordIndex, w.Word)));
+        Assert.True(recorder.Completed.Task.IsCompleted);
+    }
+
+    [Fact]
+    public void SystemVoiceFailure_WithoutALastResort_Completes()
+    {
+        var system = new ManualNeuralEngine();
+        using var tts = new TtsSwitch(system, () => new ManualNeuralEngine());
+        var recorder = new TtsRecorder(tts);
+        tts.Apply(new TtsSettingsDto());
+
+        tts.Speak("u", "Раз. Два.");
+        system.Fail("Два.", wordOffset: 1);
+
+        Assert.True(recorder.Completed.Task.IsCompleted);
     }
 
     [Fact]
@@ -365,6 +512,43 @@ public class TtsSettingsTests
     }
 
     [Fact(Timeout = 20000)]
+    public async Task PlaybackRate_IsValidated_AppliedAtOnce_AndSurvivesRestart()
+    {
+        await using var root = new TempRoot();
+        var tts = new ConfigurableTts();
+        var host = await TestHost.StartAsync(root.Path, tts);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        await log.TakeAsync<SnapshotEvent>();
+
+        foreach (var bad in new[] { 0.4, 2.1, double.NaN })
+            Assert.Equal(ProtocolErrors.InvalidArgument, (await client.SetPlaybackRateAsync(bad)).Error);
+        var badVoice = await client.UpdateSettingsAsync(tts: new TtsSettingsDto { SystemVoice = new SystemVoiceSettingsDto { Rate = 1.5 } });
+        Assert.Equal(ProtocolErrors.InvalidArgument, badVoice.Error);
+
+        Assert.True((await client.SetPlaybackRateAsync(1.25)).Ok);
+        var changed = await log.TakeAsync<SettingsChangedEvent>();
+        Assert.Equal(1.25, changed.Settings.Tts.PlaybackRate);
+        Assert.Equal(1.25, tts.Applied.Last().PlaybackRate);
+        Assert.Equal(TtsEngineKind.System, tts.Applied.Last().Engine);
+
+        var updated = await client.UpdateSettingsAsync(tts: new TtsSettingsDto
+        {
+            PlaybackRate = 1.25,
+            SystemVoice = new SystemVoiceSettingsDto { Rate = 0.6 },
+        });
+        Assert.True(updated.Ok);
+        await host.DisposeAsync();
+
+        var restartedTts = new ConfigurableTts();
+        var restarted = await TestHost.StartAsync(root.Path, restartedTts);
+        var applied = Assert.Single(restartedTts.Applied);
+        Assert.Equal(1.25, applied.PlaybackRate);
+        Assert.Equal(0.6, applied.SystemVoice.Rate);
+        await restarted.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
     public async Task SettingsWithoutTts_LoadTheDefaults()
     {
         await using var root = new TempRoot();
@@ -377,6 +561,8 @@ public class TtsSettingsTests
         Assert.Equal(PlaybackMode.Silent, settings.Mode);
         Assert.Equal(TtsEngineKind.System, settings.Tts.Engine);
         Assert.Equal(QwenTtsSettingsDto.DefaultEndpoint, settings.Tts.Qwen.Endpoint);
+        Assert.Equal(TtsSettingsDto.DefaultPlaybackRate, settings.Tts.PlaybackRate);
+        Assert.Equal(SystemVoiceSettingsDto.DefaultRate, settings.Tts.SystemVoice.Rate);
         Assert.Equal(TtsEngineKind.System, Assert.Single(tts.Applied).Engine);
         await host.DisposeAsync();
     }

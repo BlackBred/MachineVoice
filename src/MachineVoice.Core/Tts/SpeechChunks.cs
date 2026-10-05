@@ -47,9 +47,36 @@ public static class SpeechChunks
         return chunks;
     }
 
-    public static List<string> Words(string text)
+    public static List<string> Words(string text) => WordRanges(text).Select(range => text.Substring(range.Start, range.Length)).ToList();
+
+    /// <summary>
+    /// When each word of <paramref name="text"/> starts, from the word marks of a synthesizer: the character
+    /// offset of a mark and its time in seconds. A word without a mark starts with the one before it.
+    /// </summary>
+    public static double[] WordStarts(string text, IEnumerable<(int Location, double Seconds)> marks)
     {
-        var words = new List<string>();
+        var ranges = WordRanges(text);
+        var starts = new double[ranges.Count];
+        var known = new bool[ranges.Count];
+        foreach (var (location, seconds) in marks)
+        {
+            // A mark may start at punctuation before its word, such as an opening quote.
+            var word = ranges.FindIndex(range => range.Start + range.Length > location);
+            if (word >= 0 && !known[word])
+            {
+                starts[word] = seconds;
+                known[word] = true;
+            }
+        }
+
+        for (var i = 1; i < starts.Length; i++)
+            starts[i] = known[i] ? Math.Max(starts[i], starts[i - 1]) : starts[i - 1];
+        return starts;
+    }
+
+    static List<(int Start, int Length)> WordRanges(string text)
+    {
+        var words = new List<(int, int)>();
         var start = -1;
         for (var i = 0; i <= text.Length; i++)
         {
@@ -60,7 +87,7 @@ public static class SpeechChunks
             }
             else if (!inWord && start >= 0)
             {
-                words.Add(text[start..i]);
+                words.Add((start, i - start));
                 start = -1;
             }
         }

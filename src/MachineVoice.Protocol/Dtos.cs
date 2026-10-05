@@ -41,8 +41,33 @@ public sealed class SettingsDto
 
 public sealed class TtsSettingsDto
 {
+    public const double DefaultPlaybackRate = 1.0;
+    public const double MinPlaybackRate = 0.5;
+    public const double MaxPlaybackRate = 2.0;
+
     public TtsEngineKind Engine { get; init; } = TtsEngineKind.System;
+
+    /// <summary>
+    /// Playback speed of the synthesized audio, 1 plays it as is. Unlike the other settings it applies at once,
+    /// to the response being read too. The pitch stays the same.
+    /// </summary>
+    public double PlaybackRate { get; init; } = DefaultPlaybackRate;
+
+    public SystemVoiceSettingsDto SystemVoice { get; init; } = new();
     public QwenTtsSettingsDto Qwen { get; init; } = new();
+}
+
+/// <summary>The macOS voice (AVSpeechSynthesizer).</summary>
+public sealed class SystemVoiceSettingsDto
+{
+    /// <summary>AVSpeechUtteranceDefaultSpeechRate.</summary>
+    public const double DefaultRate = 0.5;
+
+    /// <summary>
+    /// Speech rate of the synthesizer, 0..1. It shortens pauses and sounds more natural than a faster playback,
+    /// but applies from the next response.
+    /// </summary>
+    public double Rate { get; init; } = DefaultRate;
 }
 
 /// <summary>Qwen3-TTS through the OpenAI-compatible speech endpoint of mlx-audio (mlx_audio.server).</summary>

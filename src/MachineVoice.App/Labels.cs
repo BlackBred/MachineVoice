@@ -62,6 +62,9 @@ static class Labels
         _ => "Не подключён",
     };
 
+    /// <summary>"1×", "1,25×".</summary>
+    public static string Rate(double rate) => $"{rate:0.##}×";
+
     public static string Trim(string text, int max)
     {
         var line = text.ReplaceLineEndings(" ");

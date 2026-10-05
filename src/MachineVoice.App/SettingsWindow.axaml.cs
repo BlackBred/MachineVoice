@@ -40,6 +40,9 @@ public partial class SettingsWindow : Window
         ModeAuto.IsChecked = state.Mode == PlaybackMode.Auto;
         ModeConfirm.IsChecked = state.Mode == PlaybackMode.Confirm;
         ModeSilent.IsChecked = state.Mode == PlaybackMode.Silent;
+        var rate = (decimal)state.Settings.Tts.PlaybackRate;
+        if (PlaybackRate.Value != rate)
+            PlaybackRate.Value = rate;
         _updating = false;
 
         state.Sources.TryGetValue(CursorSource, out var cursor);
@@ -175,7 +178,35 @@ public partial class SettingsWindow : Window
         });
     }
 
-    void OnEngineChecked(object? sender, RoutedEventArgs e) => QwenFields.IsEnabled = EngineQwen.IsChecked == true;
+    void OnEngineChecked(object? sender, RoutedEventArgs e)
+    {
+        QwenFields.IsEnabled = EngineQwen.IsChecked == true;
+        SystemFields.IsEnabled = EngineSystem.IsChecked == true;
+    }
+
+    // Not through RunAsync: its Update would put the old rate back into the field before the core confirms.
+    void OnPlaybackRateChanged(object? sender, NumericUpDownValueChangedEventArgs e)
+    {
+        if (_updating || e.NewValue is not { } value)
+            return;
+        var rate = (double)value;
+        if (rate != _state.Settings.Tts.PlaybackRate)
+            _ = SetPlaybackRateAsync(rate);
+    }
+
+    async Task SetPlaybackRateAsync(double rate)
+    {
+        try
+        {
+            var result = await _client.SetPlaybackRateAsync(rate);
+            if (!result.Ok)
+                _log($"Playback rate rejected: {result.Error}");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log($"Playback rate failed: {ex.Message}");
+        }
+    }
 
     async void OnSaveTts(object? sender, RoutedEventArgs e)
     {
@@ -242,6 +273,8 @@ public partial class SettingsWindow : Window
         EngineSystem.IsChecked = tts.Engine == TtsEngineKind.System;
         EngineQwen.IsChecked = tts.Engine == TtsEngineKind.Qwen;
         QwenFields.IsEnabled = tts.Engine == TtsEngineKind.Qwen;
+        SystemFields.IsEnabled = tts.Engine == TtsEngineKind.System;
+        SystemRate.Value = (decimal)tts.SystemVoice.Rate;
 
         var voices = QwenTtsSettingsDto.Voices.ToList();
         if (!voices.Contains(tts.Qwen.Voice))
@@ -257,6 +290,11 @@ public partial class SettingsWindow : Window
     TtsSettingsDto ReadTts() => new()
     {
         Engine = EngineQwen.IsChecked == true ? TtsEngineKind.Qwen : TtsEngineKind.System,
+        PlaybackRate = _state.Settings.Tts.PlaybackRate,
+        SystemVoice = new SystemVoiceSettingsDto
+        {
+            Rate = (double)(SystemRate.Value ?? (decimal)SystemVoiceSettingsDto.DefaultRate),
+        },
         Qwen = new QwenTtsSettingsDto
         {
             Endpoint = string.IsNullOrWhiteSpace(QwenEndpoint.Text) ? QwenTtsSettingsDto.DefaultEndpoint : QwenEndpoint.Text.Trim(),
@@ -266,8 +304,10 @@ public partial class SettingsWindow : Window
         },
     };
 
+    // The playback rate is not compared: the field applies it at once.
     static bool Same(TtsSettingsDto a, TtsSettingsDto b) =>
         a.Engine == b.Engine
+        && a.SystemVoice.Rate == b.SystemVoice.Rate
         && a.Qwen.Endpoint == b.Qwen.Endpoint
         && a.Qwen.Model == b.Qwen.Model
         && a.Qwen.Voice == b.Qwen.Voice

@@ -19,7 +19,7 @@ sealed record ToolResult(string Text, bool IsError)
 }
 
 /// <summary>
-/// The tools cover playback, the mode and the retelling switch. Connecting sources (it edits ~/.cursor/hooks.json),
+/// The tools cover playback, its speed, the mode and the retelling switch. Connecting sources (it edits ~/.cursor/hooks.json),
 /// the LLM endpoint and the API key stay in the settings UI: an agent should not redirect where responses are sent.
 /// </summary>
 static class McpTools
@@ -54,6 +54,23 @@ static class McpTools
             () => Schema(new JsonObject { ["mode"] = Enum("The playback mode.", "auto", "confirm", "silent") }, "mode"),
             () => new JsonObject { ["readOnlyHint"] = false, ["destructiveHint"] = false, ["idempotentHint"] = true, ["openWorldHint"] = false },
             SetModeAsync),
+        new(
+            "machinevoice_set_speed",
+            "Set reading speed",
+            "Speeds up or slows down reading at once, the response being read too; the pitch stays the same. " +
+            "1 is the normal speed. For \"faster\" or \"slower\" take playbackRate from machinevoice_status and add or subtract 0.25.",
+            () => Schema(new JsonObject
+            {
+                ["rate"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["minimum"] = TtsSettingsDto.MinPlaybackRate,
+                    ["maximum"] = TtsSettingsDto.MaxPlaybackRate,
+                    ["description"] = "Playback speed: 0.5 is half as fast, 2 twice as fast.",
+                },
+            }, "rate"),
+            () => new JsonObject { ["readOnlyHint"] = false, ["destructiveHint"] = false, ["idempotentHint"] = true, ["openWorldHint"] = false },
+            SetSpeedAsync),
         new(
             "machinevoice_confirmation",
             "Answer the confirmation",
@@ -137,6 +154,7 @@ static class McpTools
             {
                 ["engine"] = Name(snapshot.Settings.Tts.Engine, ProtocolJsonContext.Default.TtsEngineKind),
                 ["voice"] = snapshot.Settings.Tts.Engine == TtsEngineKind.Qwen ? snapshot.Settings.Tts.Qwen.Voice : null,
+                ["playbackRate"] = snapshot.Settings.Tts.PlaybackRate,
             },
         };
         return ToolResult.Ok(report.ToJsonString(Indented));
@@ -173,6 +191,20 @@ static class McpTools
 
         var result = await client.SetModeAsync(mode.Value, cancellationToken).ConfigureAwait(false);
         return result.Ok ? ToolResult.Ok($"Mode: {Name(mode.Value, ProtocolJsonContext.Default.PlaybackMode)}.") : Rejected(result);
+    }
+
+    static async Task<ToolResult> SetSpeedAsync(IControlClient client, ToolArguments arguments, CancellationToken cancellationToken)
+    {
+        var rate = arguments.Double("rate");
+        if (arguments.Error is { } error)
+            return ToolResult.Fail(error);
+        if (rate is null)
+            return ToolResult.Fail("rate is required.");
+
+        var result = await client.SetPlaybackRateAsync(rate.Value, cancellationToken).ConfigureAwait(false);
+        if (result.Error == ProtocolErrors.InvalidArgument)
+            return ToolResult.Fail($"rate must be from {TtsSettingsDto.MinPlaybackRate} to {TtsSettingsDto.MaxPlaybackRate}.");
+        return result.Ok ? ToolResult.Ok($"Speed: {Math.Round(rate.Value, 2)}x.") : Rejected(result);
     }
 
     static async Task<ToolResult> ConfirmationAsync(IControlClient client, ToolArguments arguments, CancellationToken cancellationToken)
@@ -286,6 +318,7 @@ sealed class ToolArguments(JsonObject json)
     public string? String(string name) => Get<string>(name, "a string");
     public bool? Bool(string name) => GetValue<bool>(name, "a boolean");
     public int? Int(string name) => GetValue<int>(name, "an integer");
+    public double? Double(string name) => GetValue<double>(name, "a number");
 
     public T? Enum<T>(string name, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> type, string allowed) where T : struct
     {

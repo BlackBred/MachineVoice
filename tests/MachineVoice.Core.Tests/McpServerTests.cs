@@ -30,7 +30,7 @@ public class McpServerTests
         Assert.Equal("two", (string?)responses[1]["id"]);
         var tools = responses[1]["result"]!["tools"]!.AsArray().Select(tool => (string?)tool!["name"]).ToList();
         Assert.Equal(
-            ["machinevoice_status", "machinevoice_playback", "machinevoice_set_mode", "machinevoice_confirmation", "machinevoice_set_summary"],
+            ["machinevoice_status", "machinevoice_playback", "machinevoice_set_mode", "machinevoice_set_speed", "machinevoice_confirmation", "machinevoice_set_summary"],
             tools);
 
         Assert.Empty(responses[2]["result"]!.AsObject());
@@ -92,6 +92,12 @@ public class McpServerTests
         Assert.False(IsError(pause), Text(pause));
         Assert.Equal(PlayerState.Paused, (await client.GetSnapshotAsync()).Snapshot!.Player);
 
+        var speed = await CallAsync(server, "machinevoice_set_speed", new JsonObject { ["rate"] = 1.5 });
+        Assert.False(IsError(speed), Text(speed));
+        Assert.Equal(1.5, (await client.GetSettingsAsync()).Settings!.Tts.PlaybackRate);
+        var speedStatus = JsonNode.Parse(Text(await CallAsync(server, "machinevoice_status", new JsonObject())))!;
+        Assert.Equal(1.5, (double?)speedStatus["tts"]!["playbackRate"]);
+
         var summary = await CallAsync(server, "machinevoice_set_summary", new JsonObject
         {
             ["enabled"] = true,
@@ -123,6 +129,9 @@ public class McpServerTests
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject())));
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject { ["enabled"] = true })));
         Assert.True(IsError(await CallAsync(server, "machinevoice_confirmation", new JsonObject { ["action"] = "listen" })));
+        Assert.True(IsError(await CallAsync(server, "machinevoice_set_speed", new JsonObject())));
+        Assert.True(IsError(await CallAsync(server, "machinevoice_set_speed", new JsonObject { ["rate"] = "fast" })));
+        Assert.True(IsError(await CallAsync(server, "machinevoice_set_speed", new JsonObject { ["rate"] = 3 })));
 
         var pause = await CallAsync(server, "machinevoice_playback", new JsonObject { ["action"] = "pause" });
         Assert.True(IsError(pause));

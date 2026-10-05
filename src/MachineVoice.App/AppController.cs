@@ -17,6 +17,7 @@ sealed class AppController
 {
     // Between two responses the player is idle for a moment; hiding at once would make the pill blink.
     static readonly TimeSpan HideDelay = TimeSpan.FromMilliseconds(700);
+    const double RateStep = 0.1;
 
     readonly Application _application;
     readonly IClassicDesktopStyleApplicationLifetime _desktop;
@@ -64,9 +65,10 @@ sealed class AppController
         try
         {
             _tts = new TtsSwitch(
-                new AvSpeechEngine(new AvSpeechOptions { Log = _log.Write }),
-                () => new NeuralTtsEngine(new AvAudioPlayer(), new MlxAudioServer(_options.RootDirectory, _log.Write), log: _log.Write),
-                _log.Write);
+                AvSpeechWriter.Engine(new AvAudioPlayer(), new AvSpeechOptions { Log = _log.Write }),
+                () => QwenSynthesizer.Engine(new AvAudioPlayer(), new MlxAudioServer(_options.RootDirectory, _log.Write), log: _log.Write),
+                _log.Write,
+                lastResort: new AvSpeechEngine(new AvSpeechOptions { Log = _log.Write }));
             _host = await MachineVoiceHost.StartAsync(new MachineVoiceOptions
             {
                 RootDirectory = _options.RootDirectory,
@@ -116,6 +118,8 @@ sealed class AppController
     void CreateUi()
     {
         _overlay = new OverlayWindow();
+        _overlay.SlowerRequested += () => StepRate(-RateStep);
+        _overlay.FasterRequested += () => StepRate(RateStep);
         _overlay.PauseResumeRequested += PauseResume;
         _overlay.StopRequested += () => Send(client => client.StopAsync());
         _overlay.SkipRequested += () => Send(client => client.SkipAsync());
@@ -225,6 +229,14 @@ sealed class AppController
             Send(client => client.PauseAsync());
         else
             Send(client => client.ResumeAsync());
+    }
+
+    void StepRate(double step)
+    {
+        var current = _state.Settings.Tts.PlaybackRate;
+        var next = Math.Clamp(Math.Round(current + step, 1), TtsSettingsDto.MinPlaybackRate, TtsSettingsDto.MaxPlaybackRate);
+        if (next != current)
+            Send(client => client.SetPlaybackRateAsync(next));
     }
 
     void OpenChat(ChatRequestedEvent chat)

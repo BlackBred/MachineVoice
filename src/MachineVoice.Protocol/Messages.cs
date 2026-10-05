@@ -32,6 +32,13 @@ public sealed class SetModeCommand : ClientMessage
     public PlaybackMode? Mode { get; init; }
 }
 
+/// <summary>Sets <see cref="TtsSettingsDto.PlaybackRate"/>; the response being read speeds up or slows down at once.</summary>
+public sealed class SetPlaybackRateCommand : ClientMessage
+{
+    public string Type { get; init; } = "setPlaybackRate";
+    public double? Rate { get; init; }
+}
+
 public sealed class ListenCommand : ClientMessage
 {
     public string Type { get; init; } = "listen";

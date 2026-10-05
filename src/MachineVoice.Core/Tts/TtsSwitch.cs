@@ -4,8 +4,9 @@ namespace MachineVoice.Core;
 
 /// <summary>
 /// Routes speech to the engine chosen in the settings. A change applies from the next utterance; the one being
-/// read stays on its engine. When the neural engine fails, the system voice reads the rest of the utterance.
-/// The Qwen engine is created the first time it is selected. Owns both engines.
+/// read stays on its engine. When the neural engine fails, the system voice reads the rest of the utterance;
+/// when the system voice fails too, the last resort does. The Qwen engine is created the first time it is
+/// selected. Owns all engines.
 /// </summary>
 public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
 {
@@ -13,6 +14,7 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
     // run and would wait for _gate in turn.
     readonly object _gate = new();
     readonly ITtsEngine _system;
+    readonly ITtsEngine? _lastResort;
     readonly Func<ITtsEngine> _createQwen;
     readonly Action<string>? _log;
     TtsSettingsDto _settings = new();
@@ -20,12 +22,15 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
     Route? _route;
     bool _disposed;
 
-    public TtsSwitch(ITtsEngine system, Func<ITtsEngine> createQwen, Action<string>? log = null)
+    public TtsSwitch(ITtsEngine system, Func<ITtsEngine> createQwen, Action<string>? log = null, ITtsEngine? lastResort = null)
     {
         _system = system;
+        _lastResort = lastResort;
         _createQwen = createQwen;
         _log = log;
         Subscribe(system);
+        if (lastResort is not null)
+            Subscribe(lastResort);
     }
 
     public event EventHandler<TtsProgressEventArgs>? Progress;
@@ -48,6 +53,8 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
             qwen = _qwen;
         }
 
+        (_system as IConfigurableTts)?.Apply(settings);
+        (_lastResort as IConfigurableTts)?.Apply(settings);
         (qwen as IConfigurableTts)?.Apply(settings);
     }
 
@@ -98,6 +105,7 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
 
         (qwen as IDisposable)?.Dispose();
         (_system as IDisposable)?.Dispose();
+        (_lastResort as IDisposable)?.Dispose();
     }
 
     ITtsEngine? Routed()
@@ -141,28 +149,36 @@ public sealed class TtsSwitch : ITtsEngine, IConfigurableTts, IDisposable
 
     void OnFailed(ITtsEngine engine, TtsFailedEventArgs args)
     {
+        ITtsEngine? next;
         lock (_gate)
         {
             if (!Matches(engine, args.UtteranceId))
                 return;
-            _route = new Route(_system, args.UtteranceId, args.WordOffset);
+            next = engine == _system ? _lastResort : engine == _qwen ? _system : null;
+            _route = next is null ? null : new Route(next, args.UtteranceId, _route!.WordOffset + args.WordOffset);
+        }
+
+        if (next is null)
+        {
+            Completed?.Invoke(this, new TtsCompletedEventArgs(args.UtteranceId));
+            return;
         }
 
         if (string.IsNullOrWhiteSpace(args.RemainingText))
         {
-            OnCompleted(_system, new TtsCompletedEventArgs(args.UtteranceId));
+            OnCompleted(next, new TtsCompletedEventArgs(args.UtteranceId));
             return;
         }
 
-        _log?.Invoke("The system voice reads the rest of the response.");
+        _log?.Invoke(next == _system ? "The system voice reads the rest of the response." : "The plain system voice reads the rest of the response.");
         try
         {
-            _system.Speak(args.UtteranceId, args.RemainingText);
+            next.Speak(args.UtteranceId, args.RemainingText);
         }
         catch (Exception ex)
         {
             _log?.Invoke($"System voice failed: {ex.Message}");
-            OnCompleted(_system, new TtsCompletedEventArgs(args.UtteranceId));
+            OnCompleted(next, new TtsCompletedEventArgs(args.UtteranceId));
         }
     }
 

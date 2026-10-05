@@ -2,40 +2,57 @@ using MachineVoice.Protocol;
 
 namespace MachineVoice.Core;
 
+/// <param name="Wav">A complete audio file.</param>
+/// <param name="WordStarts">
+/// Seconds into the clip where each word of the chunk starts, one entry per word of <see cref="SpeechChunk.Words"/>.
+/// Null when the synthesizer does not know; then the word is estimated from the position in the clip.
+/// </param>
+public sealed record SpeechAudio(byte[] Wav, IReadOnlyList<double>? WordStarts = null);
+
+/// <summary>Turns the chunks of an utterance into audio for <see cref="ChunkedAudioEngine"/>.</summary>
+public interface IChunkSynthesizer
+{
+    /// <summary>Starts an utterance with the current settings, before its first chunk.</summary>
+    ISynthesisSession Begin();
+}
+
+/// <summary>One utterance. Disposed once, when the utterance finishes, fails, stops or is replaced.</summary>
+public interface ISynthesisSession : IDisposable
+{
+    /// <summary>Runs once before the first chunk, without the per-chunk timeout (a server that has to start).</summary>
+    Task PrepareAsync(CancellationToken cancellationToken);
+
+    Task<SpeechAudio> SynthesizeAsync(string text, CancellationToken cancellationToken);
+}
+
 /// <summary>
-/// Qwen3-TTS through an mlx-audio server. The text is synthesized sentence by sentence while earlier sentences
-/// play, at most <see cref="Lookahead"/> chunks ahead, so a stop wastes little work. Pause holds the clip
-/// that plays and does not start the next one. Word progress is estimated from the position in the clip.
+/// Speaks through synthesized audio. The text is synthesized sentence by sentence while earlier sentences play,
+/// at most <see cref="Lookahead"/> chunks ahead, so a stop wastes little work. Pause holds the clip that plays
+/// and does not start the next one. The playback rate follows the settings at once, also mid-clip.
 /// </summary>
-public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDisposable
+public sealed class ChunkedAudioEngine : IFallibleTtsEngine, IConfigurableTts, IDisposable
 {
     const int Lookahead = 2;
     static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(40);
-    static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2);
-
-    // The first load downloads the model (about 4.5 GB).
-    static readonly TimeSpan LoadTimeout = TimeSpan.FromMinutes(30);
 
     // Player calls happen under _gate: the player never calls back, so this cannot deadlock.
     readonly object _gate = new();
     readonly IAudioPlayer _player;
-    readonly ISpeechServer? _server;
-    readonly HttpClient _http;
-    readonly SpeechSynthesisClient _client;
+    readonly IChunkSynthesizer _synthesizer;
+    readonly string _name;
+    readonly TimeSpan _chunkTimeout;
     readonly Action<string>? _log;
-    readonly CancellationTokenSource _lifetime = new();
-    QwenTtsSettingsDto _settings = new();
-    bool _enabled;
     Utterance? _current;
     bool _disposed;
 
-    public NeuralTtsEngine(IAudioPlayer player, ISpeechServer? server = null, HttpMessageHandler? httpHandler = null, Action<string>? log = null)
+    /// <param name="name">Engine name for the log.</param>
+    /// <param name="chunkTimeout">How long one chunk may take to synthesize.</param>
+    public ChunkedAudioEngine(IAudioPlayer player, IChunkSynthesizer synthesizer, string name, TimeSpan chunkTimeout, Action<string>? log = null)
     {
         _player = player;
-        _server = server;
-        _http = httpHandler is null ? new HttpClient() : new HttpClient(httpHandler, disposeHandler: false);
-        _http.Timeout = Timeout.InfiniteTimeSpan;
-        _client = new SpeechSynthesisClient(_http);
+        _synthesizer = synthesizer;
+        _name = name;
+        _chunkTimeout = chunkTimeout;
         _log = log;
     }
 
@@ -43,26 +60,16 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
     public event EventHandler<TtsCompletedEventArgs>? Completed;
     public event EventHandler<TtsFailedEventArgs>? Failed;
 
-    /// <summary>New settings apply from the next utterance. Selecting this engine loads the model in the background.</summary>
     public void Apply(TtsSettingsDto settings)
     {
-        var qwen = settings.Qwen ?? new QwenTtsSettingsDto();
-        bool warmUp, idle;
         lock (_gate)
         {
             if (_disposed)
                 return;
-            var enabled = settings.Engine == TtsEngineKind.Qwen;
-            warmUp = enabled && (!_enabled || !TtsRules.Same(qwen, _settings));
-            idle = !enabled && _enabled && _current is null;
-            _settings = qwen;
-            _enabled = enabled;
+            _player.Rate = settings.PlaybackRate;
         }
 
-        if (warmUp)
-            _ = Task.Run(() => WarmUpAsync(qwen));
-        else if (idle)
-            _server?.Idle(UnloadAfter(qwen));
+        (_synthesizer as IConfigurableTts)?.Apply(settings);
     }
 
     public void Speak(string utteranceId, string text)
@@ -70,20 +77,30 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
         ArgumentNullException.ThrowIfNull(utteranceId);
         ArgumentNullException.ThrowIfNull(text);
 
-        Utterance next;
         Utterance? previous;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             previous = _current;
-            next = new Utterance(utteranceId, text, _settings);
-            _current = next;
+            _current = null;
             if (previous?.Playing == true)
                 _player.Stop();
         }
 
-        previous?.Cancel();
-        _server?.Busy();
+        // The previous session ends before the next begins: a server goes idle, then busy again.
+        previous?.End();
+        var next = new Utterance(utteranceId, text, _synthesizer.Begin());
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                next.End();
+                throw new ObjectDisposedException(GetType().FullName);
+            }
+
+            _current = next;
+        }
+
         _ = Task.Run(() => RunAsync(next));
     }
 
@@ -122,10 +139,7 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
                 _player.Stop();
         }
 
-        if (stopped is null)
-            return;
-        stopped.Cancel();
-        _server?.Idle(UnloadAfter(stopped.Settings));
+        stopped?.End();
     }
 
     public void Dispose()
@@ -141,17 +155,15 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
             _player.Stop();
         }
 
-        current?.Cancel();
-        _lifetime.Cancel();
+        current?.End();
         _player.Dispose();
-        _server?.Dispose();
-        _http.Dispose();
+        (_synthesizer as IDisposable)?.Dispose();
     }
 
     async Task RunAsync(Utterance utterance)
     {
         var chunks = SpeechChunks.Split(utterance.Text);
-        var ready = chunks.Select(_ => new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var ready = chunks.Select(_ => new TaskCompletionSource<SpeechAudio>(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
         var slots = new SemaphoreSlim(Lookahead);
         var producer = ProduceAsync(utterance, chunks, ready, slots);
         var index = 0;
@@ -165,7 +177,7 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
                 if (!Begin(utterance, audio))
                     return;
                 slots.Release();
-                await PlayAsync(utterance, chunks[index]).ConfigureAwait(false);
+                await PlayAsync(utterance, chunks[index], audio).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (utterance.Token.IsCancellationRequested)
@@ -188,26 +200,26 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
     }
 
     /// <summary>Synthesizes the chunks in order. Never throws: a failure goes to the chunks that are not ready.</summary>
-    async Task ProduceAsync(Utterance utterance, IReadOnlyList<SpeechChunk> chunks, TaskCompletionSource<byte[]>[] ready, SemaphoreSlim slots)
+    async Task ProduceAsync(Utterance utterance, IReadOnlyList<SpeechChunk> chunks, TaskCompletionSource<SpeechAudio>[] ready, SemaphoreSlim slots)
     {
         var index = 0;
         try
         {
-            if (chunks.Count > 0 && _server is not null)
-                await _server.EnsureRunningAsync(new Uri(utterance.Settings.Endpoint), utterance.Token).ConfigureAwait(false);
+            if (chunks.Count > 0)
+                await utterance.Session.PrepareAsync(utterance.Token).ConfigureAwait(false);
 
             for (; index < chunks.Count; index++)
             {
                 await slots.WaitAsync(utterance.Token).ConfigureAwait(false);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(utterance.Token);
-                timeout.CancelAfter(RequestTimeout);
+                timeout.CancelAfter(_chunkTimeout);
                 try
                 {
-                    ready[index].TrySetResult(await _client.SynthesizeAsync(utterance.Settings, chunks[index].Text, timeout.Token).ConfigureAwait(false));
+                    ready[index].TrySetResult(await utterance.Session.SynthesizeAsync(chunks[index].Text, timeout.Token).ConfigureAwait(false));
                 }
                 catch (OperationCanceledException) when (!utterance.Token.IsCancellationRequested)
                 {
-                    throw new TimeoutException($"No audio within {RequestTimeout.TotalSeconds:0} s.");
+                    throw new TimeoutException($"No audio within {_chunkTimeout.TotalSeconds:0} s.");
                 }
             }
         }
@@ -232,21 +244,21 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
         }
     }
 
-    bool Begin(Utterance utterance, byte[] audio)
+    bool Begin(Utterance utterance, SpeechAudio audio)
     {
         lock (_gate)
         {
             if (_current != utterance)
                 return false;
             utterance.Playing = true;
-            _player.Play(audio);
+            _player.Play(audio.Wav);
             if (utterance.Paused)
                 _player.Pause();
             return true;
         }
     }
 
-    async Task PlayAsync(Utterance utterance, SpeechChunk chunk)
+    async Task PlayAsync(Utterance utterance, SpeechChunk chunk, SpeechAudio audio)
     {
         var reported = 0;
         Report(utterance, chunk.FirstWord, chunk.Words[0]);
@@ -264,15 +276,27 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
 
             if (!state.Active)
                 return;
-            if (state.Duration <= 0)
-                continue;
 
-            var word = Math.Clamp((int)(state.Position / state.Duration * chunk.Words.Count), 0, chunk.Words.Count - 1);
+            var word = WordAt(chunk, audio, state);
             if (word <= reported)
                 continue;
             reported = word;
             Report(utterance, chunk.FirstWord + word, chunk.Words[word]);
         }
+    }
+
+    static int WordAt(SpeechChunk chunk, SpeechAudio audio, AudioPlayback state)
+    {
+        var last = chunk.Words.Count - 1;
+        if (audio.WordStarts is { Count: > 0 } starts)
+        {
+            var word = 0;
+            while (word + 1 < starts.Count && starts[word + 1] <= state.Position)
+                word++;
+            return Math.Min(word, last);
+        }
+
+        return state.Duration <= 0 ? 0 : Math.Clamp((int)(state.Position / state.Duration * chunk.Words.Count), 0, last);
     }
 
     void Report(Utterance utterance, int wordIndex, string word)
@@ -295,7 +319,7 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
             _current = null;
         }
 
-        _server?.Idle(UnloadAfter(utterance.Settings));
+        utterance.End();
         Completed?.Invoke(this, new TtsCompletedEventArgs(utterance.Id));
     }
 
@@ -310,8 +334,8 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
                 _player.Stop();
         }
 
-        _log?.Invoke($"Qwen3-TTS failed: {error.Message}");
-        _server?.Idle(UnloadAfter(utterance.Settings));
+        _log?.Invoke($"{_name} failed: {error.Message}");
+        utterance.End();
         var handler = Failed;
         if (handler is null)
         {
@@ -324,44 +348,14 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
         handler(this, new TtsFailedEventArgs(utterance.Id, remaining, offset, error));
     }
 
-    async Task WarmUpAsync(QwenTtsSettingsDto settings)
-    {
-        _server?.Busy();
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
-        timeout.CancelAfter(LoadTimeout);
-        try
-        {
-            if (_server is not null)
-                await _server.EnsureRunningAsync(new Uri(settings.Endpoint), timeout.Token).ConfigureAwait(false);
-            await _client.LoadModelAsync(settings, timeout.Token).ConfigureAwait(false);
-            _log?.Invoke($"Qwen3-TTS model loaded: {settings.Model}");
-        }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
-        {
-            return;
-        }
-        catch (Exception ex)
-        {
-            _log?.Invoke($"Qwen3-TTS warm-up failed: {ex.Message}");
-        }
-
-        bool idle;
-        lock (_gate)
-            idle = _current is null && !_disposed;
-        if (idle)
-            _server?.Idle(UnloadAfter(settings));
-    }
-
-    static TimeSpan? UnloadAfter(QwenTtsSettingsDto settings) =>
-        settings.UnloadAfterMinutes > 0 ? TimeSpan.FromMinutes(settings.UnloadAfterMinutes) : null;
-
-    sealed class Utterance(string id, string text, QwenTtsSettingsDto settings)
+    sealed class Utterance(string id, string text, ISynthesisSession session)
     {
         readonly CancellationTokenSource _cancel = new();
+        int _ended;
 
         public string Id { get; } = id;
         public string Text { get; } = text;
-        public QwenTtsSettingsDto Settings { get; } = settings;
+        public ISynthesisSession Session { get; } = session;
         public CancellationToken Token => _cancel.Token;
 
         // Guarded by the engine's _gate.
@@ -369,5 +363,12 @@ public sealed class NeuralTtsEngine : IFallibleTtsEngine, IConfigurableTts, IDis
         public bool Playing { get; set; }
 
         public void Cancel() => _cancel.Cancel();
+
+        public void End()
+        {
+            Cancel();
+            if (Interlocked.Exchange(ref _ended, 1) == 0)
+                Session.Dispose();
+        }
     }
 }

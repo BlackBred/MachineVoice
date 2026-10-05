@@ -481,6 +481,7 @@ sealed class SpeechEngine : IAsyncDisposable
             StopCommand => Stop(command.Id),
             SkipCommand => Skip(command.Id),
             SetModeCommand setMode => ApplyMode(command.Id, setMode.Mode),
+            SetPlaybackRateCommand setRate => ApplyPlaybackRate(command.Id, setRate.Rate),
             ListenCommand listen => Listen(command.Id, listen.ItemId),
             DismissCommand dismiss => Dismiss(command.Id, dismiss.ItemId),
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
@@ -635,6 +636,22 @@ sealed class SpeechEngine : IAsyncDisposable
         PersistSettings();
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
         Advance();
+        return Ok(id);
+    }
+
+    ResultMessage ApplyPlaybackRate(string id, double? rate)
+    {
+        if (rate is not { } value || !TtsRules.ValidPlaybackRate(value))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+
+        var tts = TtsRules.WithPlaybackRate(_settings.Tts, value);
+        if (tts.PlaybackRate == _settings.Tts.PlaybackRate)
+            return Ok(id);
+
+        _settings = Settings(_settings.Sources, _settings.Summary, tts);
+        ApplyTts();
+        PersistSettings();
+        Publish(new SettingsChangedEvent { Settings = CopySettings() });
         return Ok(id);
     }
 

@@ -20,6 +20,8 @@ public partial class OverlayWindow : Window
         InitializeComponent();
     }
 
+    public event Action? SlowerRequested;
+    public event Action? FasterRequested;
     public event Action? PauseResumeRequested;
     public event Action? StopRequested;
     public event Action? SkipRequested;
@@ -50,6 +52,7 @@ public partial class OverlayWindow : Window
             TopicText.Text = Labels.Topic(item);
             PauseIcon.Data = Glyph(paused ? "PlayGlyph" : "PauseGlyph");
             ToolTip.SetTip(PauseButton, paused ? "Продолжить" : "Пауза");
+            RateText.Text = Labels.Rate(state.Settings.Tts.PlaybackRate);
             ProgressLine.IsVisible = true;
             PlaybackButtons.IsVisible = true;
             ConfirmButtons.IsVisible = false;
@@ -91,6 +94,8 @@ public partial class OverlayWindow : Window
             area.Y + area.Height - size.Height - (int)(BottomOffset * screen.Scaling));
     }
 
+    void OnSlower(object? sender, RoutedEventArgs e) => SlowerRequested?.Invoke();
+    void OnFaster(object? sender, RoutedEventArgs e) => FasterRequested?.Invoke();
     void OnPause(object? sender, RoutedEventArgs e) => PauseResumeRequested?.Invoke();
     void OnStop(object? sender, RoutedEventArgs e) => StopRequested?.Invoke();
     void OnSkip(object? sender, RoutedEventArgs e) => SkipRequested?.Invoke();

@@ -25,6 +25,9 @@ public class AvSpeechEngineTests
         [nameof(Speak_ReplacesCurrentUtterance_WithoutCompletingIt)] = SpeakReplacesCurrent,
         [nameof(Pause_HoldsAtWordBoundary_UntilResume)] = PauseHoldsUntilResume,
         [nameof(Host_SpeaksQueuedItem_ThroughSynthesizer)] = HostSpeaksQueuedItem,
+        [nameof(Writer_ReturnsAudio_WithAStartForEveryWord)] = WriterReturnsAudio,
+        [nameof(Writer_VoiceRate_ChangesTheLength)] = WriterVoiceRate,
+        [nameof(WriterEngine_ReportsWordsInOrder_ThenCompletes)] = WriterEngineSpeaks,
     };
 
     [MacOSFact(Timeout = 60000)]
@@ -41,6 +44,15 @@ public class AvSpeechEngineTests
 
     [MacOSFact(Timeout = 60000)]
     public Task Host_SpeaksQueuedItem_ThroughSynthesizer() => RunInChildAsync();
+
+    [MacOSFact(Timeout = 60000)]
+    public Task Writer_ReturnsAudio_WithAStartForEveryWord() => RunInChildAsync();
+
+    [MacOSFact(Timeout = 60000)]
+    public Task Writer_VoiceRate_ChangesTheLength() => RunInChildAsync();
+
+    [MacOSFact(Timeout = 60000)]
+    public Task WriterEngine_ReportsWordsInOrder_ThenCompletes() => RunInChildAsync();
 
     /// <summary>Child process entry: runs the scenario while the main thread runs the main loop.</summary>
     public static int RunChild(string scenario)
@@ -180,6 +192,67 @@ public class AvSpeechEngineTests
         var spoken = await log.TakeAsync<HistoryAppendedEvent>(timeoutMs: 15000);
         Assert.Equal(SpeechOutcome.Spoken, spoken.Entry.Outcome);
         Assert.Equal(accepted.Id, spoken.Entry.Item.Id);
+    }
+
+    static async Task WriterReturnsAudio()
+    {
+        const string text = "«Готово», сборка прошла. Тесты зелёные!";
+        using var writer = new AvSpeechWriter(new AvSpeechOptions { Language = "ru-RU" });
+        using var session = writer.Begin();
+
+        var audio = await session.SynthesizeAsync(text, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+
+        var seconds = WavSeconds(audio.Wav);
+        Assert.InRange(seconds, 1, 10);
+        var starts = audio.WordStarts!;
+        Assert.Equal(SpeechChunks.Words(text).Count, starts.Count);
+        Assert.Equal(0, starts[0], precision: 2);
+        for (var i = 1; i < starts.Count; i++)
+            Assert.True(starts[i] > starts[i - 1], $"Word {i} starts at {starts[i]}, not after {starts[i - 1]}.");
+        Assert.True(starts[^1] < seconds);
+
+        // The next write must not get buffers of this one.
+        var next = await session.SynthesizeAsync("дальше", CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.True(WavSeconds(next.Wav) < seconds);
+    }
+
+    static async Task WriterVoiceRate()
+    {
+        using var writer = new AvSpeechWriter(new AvSpeechOptions { Language = "ru-RU" });
+        const string text = "Это фраза, которую голос прочитает сначала медленно, потом быстро.";
+
+        writer.Apply(new TtsSettingsDto { SystemVoice = new SystemVoiceSettingsDto { Rate = 0.35 } });
+        using var slow = writer.Begin();
+        var slowSeconds = WavSeconds((await slow.SynthesizeAsync(text, CancellationToken.None)).Wav);
+        writer.Apply(new TtsSettingsDto { SystemVoice = new SystemVoiceSettingsDto { Rate = 0.65 } });
+        using var fast = writer.Begin();
+        var fastSeconds = WavSeconds((await fast.SynthesizeAsync(text, CancellationToken.None)).Wav);
+
+        Assert.True(fastSeconds < slowSeconds * 0.8, $"{fastSeconds:0.00} s at 0.65, {slowSeconds:0.00} s at 0.35.");
+    }
+
+    static async Task WriterEngineSpeaks()
+    {
+        using var tts = AvSpeechWriter.Engine(new AvAudioPlayer(volume: 0), new AvSpeechOptions { Language = "ru-RU" });
+        tts.Apply(new TtsSettingsDto { PlaybackRate = 2 });
+        var recorder = new Recorder(tts);
+
+        tts.Speak("u1", "Один два три. Четыре пять шесть.");
+
+        Assert.Equal("u1", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(15)));
+        var indices = recorder.Words.Select(w => w.WordIndex).ToArray();
+        Assert.Equal(indices.Order(), indices);
+        Assert.Equal(0, indices[0]);
+        Assert.Equal(5, indices[^1]);
+        Assert.Contains(recorder.Words, w => w.Word == "четыре" || w.Word == "Четыре");
+    }
+
+    /// <summary>The length of a 16-bit mono WAV from <see cref="WavFile.Mono16"/>.</summary>
+    static double WavSeconds(byte[] wav)
+    {
+        Assert.Equal("RIFF"u8.ToArray(), wav[..4]);
+        var sampleRate = BitConverter.ToInt32(wav, 24);
+        return (wav.Length - 44) / 2.0 / sampleRate;
     }
 
     static AvSpeechEngine Silent() => new(new AvSpeechOptions { Language = "ru-RU", Volume = 0 });

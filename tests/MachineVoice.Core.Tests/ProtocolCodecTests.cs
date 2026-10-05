@@ -25,6 +25,10 @@ public class ProtocolCodecTests
         });
         Assert.Contains("\"mode\":\"confirm\"", mode);
 
+        var rate = ProtocolCodec.Write(new SetPlaybackRateCommand { Version = ProtocolVersion.Current, Id = "1", Rate = 1.5 });
+        Assert.Contains("\"type\":\"setPlaybackRate\"", rate);
+        Assert.Equal(1.5, Assert.IsType<SetPlaybackRateCommand>(ProtocolCodec.ReadClient(rate).Message).Rate);
+
         var legacy = ProtocolCodec.Write(new ResultMessage
         {
             Id = "1",
@@ -68,6 +72,7 @@ public class ProtocolCodecTests
             new StopCommand { Version = 1, Id = "s" },
             new SkipCommand { Version = 1, Id = "k" },
             new SetModeCommand { Version = 1, Id = "m", Mode = PlaybackMode.Silent },
+            new SetPlaybackRateCommand { Version = 1, Id = "v", Rate = 1.25 },
             new ListenCommand { Version = 1, Id = "l", ItemId = "item" },
             new DismissCommand { Version = 1, Id = "d", ItemId = "item" },
             new OpenChatCommand { Version = 1, Id = "o", ItemId = "item" },

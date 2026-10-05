@@ -11,6 +11,10 @@ static class TtsRules
     {
         if (!Enum.IsDefined(settings.Engine))
             return ProtocolErrors.InvalidArgument;
+        if (!ValidPlaybackRate(settings.PlaybackRate))
+            return ProtocolErrors.InvalidArgument;
+        if (settings.SystemVoice is { } system && !(system.Rate is >= 0 and <= 1))
+            return ProtocolErrors.InvalidArgument;
         if (settings.Qwen is not { } qwen)
             return null;
         if (!Uri.TryCreate(qwen.Endpoint?.Trim(), UriKind.Absolute, out var endpoint)
@@ -25,9 +29,17 @@ static class TtsRules
         return null;
     }
 
+    public static bool ValidPlaybackRate(double rate) =>
+        rate is >= TtsSettingsDto.MinPlaybackRate and <= TtsSettingsDto.MaxPlaybackRate;
+
     public static TtsSettingsDto Canonical(TtsSettingsDto settings) => new()
     {
         Engine = settings.Engine,
+        PlaybackRate = Math.Round(settings.PlaybackRate, 2),
+        SystemVoice = new SystemVoiceSettingsDto
+        {
+            Rate = Math.Round(settings.SystemVoice?.Rate ?? SystemVoiceSettingsDto.DefaultRate, 2),
+        },
         Qwen = settings.Qwen is not { } qwen
             ? new QwenTtsSettingsDto()
             : new QwenTtsSettingsDto
@@ -38,6 +50,14 @@ static class TtsRules
                 UnloadAfterMinutes = qwen.UnloadAfterMinutes,
             },
     };
+
+    public static TtsSettingsDto WithPlaybackRate(TtsSettingsDto settings, double rate) => Canonical(new TtsSettingsDto
+    {
+        Engine = settings.Engine,
+        PlaybackRate = rate,
+        SystemVoice = settings.SystemVoice,
+        Qwen = settings.Qwen,
+    });
 
     /// <summary>Settings read from disk may be missing or broken; those fall back to the defaults.</summary>
     public static TtsSettingsDto Loaded(TtsSettingsDto? settings) =>

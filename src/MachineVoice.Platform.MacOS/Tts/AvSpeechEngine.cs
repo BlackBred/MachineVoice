@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using MachineVoice.Core;
+using MachineVoice.Protocol;
 using static MachineVoice.Platform.MacOS.Interop.ObjC;
 
 namespace MachineVoice.Platform.MacOS;
@@ -14,7 +15,7 @@ public sealed class AvSpeechOptions
     /// <summary>BCP 47 language for the default voice of that language. Null means the system voice.</summary>
     public string? Language { get; init; } = "ru-RU";
 
-    /// <summary>AVSpeechUtterance rate, 0..1. Null keeps the system default.</summary>
+    /// <summary>AVSpeechUtterance rate, 0..1, until the settings set it. Null keeps the system default.</summary>
     public float? Rate { get; init; }
 
     /// <summary>0..1. Null keeps the system default.</summary>
@@ -27,9 +28,10 @@ public sealed class AvSpeechOptions
 /// AVSpeechSynthesizer through the Objective-C runtime. Pause takes effect at the next word boundary,
 /// word progress and the end of an utterance come from the synthesizer delegate. The delegate runs on the
 /// main queue: the process needs NSApplication or <see cref="MacMainLoop.Run"/> on the main thread.
+/// The synthesizer plays the audio itself, so the playback rate does not apply; the voice rate does.
 /// </summary>
 [SupportedOSPlatform("macos")]
-public sealed class AvSpeechEngine : ITtsEngine, IDisposable
+public sealed class AvSpeechEngine : ITtsEngine, IConfigurableTts, IDisposable
 {
     const nint BoundaryImmediate = 0;
     const nint BoundaryWord = 1;
@@ -46,11 +48,13 @@ public sealed class AvSpeechEngine : ITtsEngine, IDisposable
     readonly IntPtr _delegate;
     readonly IntPtr _voice;
     Utterance? _current;
+    float? _rate;
     bool _disposed;
 
     public AvSpeechEngine(AvSpeechOptions? options = null)
     {
         _options = options ?? new AvSpeechOptions();
+        _rate = _options.Rate;
         NativeLibrary.Load("/System/Library/Frameworks/AVFoundation.framework/AVFoundation");
 
         var pool = objc_autoreleasePoolPush();
@@ -113,7 +117,7 @@ public sealed class AvSpeechEngine : ITtsEngine, IDisposable
                 var handle = Send(Send(Class("AVSpeechUtterance"), Sel("alloc")), Sel("initWithString:"), NSString(text.Replace('\0', ' ')));
                 if (_voice != IntPtr.Zero)
                     SendVoid(handle, Sel("setVoice:"), _voice);
-                if (_options.Rate is { } rate)
+                if (_rate is { } rate)
                     SendVoid(handle, Sel("setRate:"), rate);
                 if (_options.Volume is { } volume)
                     SendVoid(handle, Sel("setVolume:"), volume);
@@ -130,6 +134,13 @@ public sealed class AvSpeechEngine : ITtsEngine, IDisposable
                 objc_autoreleasePoolPop(pool);
             }
         }
+    }
+
+    /// <summary>The voice rate applies from the next utterance.</summary>
+    public void Apply(TtsSettingsDto settings)
+    {
+        lock (_native)
+            _rate = (float)(settings.SystemVoice?.Rate ?? SystemVoiceSettingsDto.DefaultRate);
     }
 
     public void Pause()
@@ -238,7 +249,8 @@ public sealed class AvSpeechEngine : ITtsEngine, IDisposable
         Completed?.Invoke(this, new TtsCompletedEventArgs(ended.Id));
     }
 
-    static IntPtr FindVoice(AvSpeechOptions options)
+    /// <summary>An autoreleased AVSpeechSynthesisVoice, or zero for the system voice.</summary>
+    internal static IntPtr FindVoice(AvSpeechOptions options)
     {
         var voiceClass = Class("AVSpeechSynthesisVoice");
         if (!string.IsNullOrWhiteSpace(options.VoiceIdentifier))

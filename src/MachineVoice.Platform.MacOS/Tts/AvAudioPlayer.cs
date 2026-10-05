@@ -15,6 +15,7 @@ public sealed class AvAudioPlayer : IAudioPlayer
     readonly object _gate = new();
     readonly float? _volume;
     IntPtr _player;
+    double _rate = 1;
     bool _paused;
     bool _disposed;
 
@@ -47,6 +48,10 @@ public sealed class AvAudioPlayer : IAudioPlayer
 
                 if (_volume is { } volume)
                     SendVoid(player, Sel("setVolume:"), volume);
+
+                // The rate can change later only if it was enabled before prepareToPlay.
+                SendVoid(player, Sel("setEnableRate:"), (byte)1);
+                SendVoid(player, Sel("setRate:"), (float)_rate);
                 SendBool(player, Sel("prepareToPlay"));
                 if (SendBool(player, Sel("play")) == 0)
                 {
@@ -90,6 +95,25 @@ public sealed class AvAudioPlayer : IAudioPlayer
     {
         lock (_gate)
             ReleasePlayer();
+    }
+
+    /// <summary>0.5..2, the range of AVAudioPlayer; the pitch stays the same.</summary>
+    public double Rate
+    {
+        get
+        {
+            lock (_gate)
+                return _rate;
+        }
+        set
+        {
+            lock (_gate)
+            {
+                _rate = Math.Clamp(value, 0.5, 2.0);
+                if (_player != IntPtr.Zero)
+                    SendVoid(_player, Sel("setRate:"), (float)_rate);
+            }
+        }
     }
 
     public AudioPlayback State

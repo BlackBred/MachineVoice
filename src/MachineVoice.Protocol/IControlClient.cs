@@ -12,6 +12,7 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> StopAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> SkipAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> SetModeAsync(PlaybackMode mode, CancellationToken cancellationToken = default);
+    Task<ResultMessage> SetPlaybackRateAsync(double rate, CancellationToken cancellationToken = default);
     Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default);
     Task<ResultMessage> DismissAsync(string itemId, CancellationToken cancellationToken = default);
     Task<ResultMessage> OpenChatAsync(string itemId, CancellationToken cancellationToken = default);

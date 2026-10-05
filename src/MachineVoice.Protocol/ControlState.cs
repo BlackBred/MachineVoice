@@ -95,8 +95,11 @@ public sealed class ControlState
                 return true;
             case SettingsChangedEvent settings:
                 Settings = settings.Settings;
+
+                // The core releases a stop only when the mode changes.
+                if (Mode != settings.Settings.Mode)
+                    Holding = false;
                 Mode = settings.Settings.Mode;
-                Holding = false;
                 return true;
             case SourceChangedEvent source:
                 _sources.TryGetValue(source.Source, out var previous);

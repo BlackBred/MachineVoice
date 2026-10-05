@@ -17,6 +17,9 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> SetModeAsync(PlaybackMode mode, CancellationToken cancellationToken = default) =>
         SendAsync(new SetModeCommand { Version = ProtocolVersion.Current, Id = NewId(), Mode = mode }, cancellationToken);
 
+    public Task<ResultMessage> SetPlaybackRateAsync(double rate, CancellationToken cancellationToken = default) =>
+        SendAsync(new SetPlaybackRateCommand { Version = ProtocolVersion.Current, Id = NewId(), Rate = rate }, cancellationToken);
+
     public Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default) =>
         SendAsync(new ListenCommand { Version = ProtocolVersion.Current, Id = NewId(), ItemId = itemId }, cancellationToken);
 
