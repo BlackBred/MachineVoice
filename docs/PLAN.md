@@ -289,6 +289,10 @@ Cursor hooks ──► integrations/cursor/hook.sh ──► Unix-сокет ─
 - Новые источники: Claude Code (хук `Stop` + `transcript_path`), Codex CLI (`notify`), универсальный CLI / HTTP.
 - Адаптеры для Windows и Linux.
 - Developer ID, нотаризация, Homebrew cask.
+- Озвучивание содержимого буфера
+- переход в конкретный чат
+- уведомление об ожидании действия пользователя
+- саммаризация ответа
 
 ## Известные риски
 
