@@ -20,7 +20,10 @@ public class OmniVoiceEngineTests
         var recorder = new TtsRecorder(tts);
         tts.Apply(Settings(voice.Id));
 
-        tts.Speak("u", "Первая фраза. Вторая фраза.");
+        // Too long together for the first chunk, which stays short so that speech starts sooner.
+        const string first = "Первая фраза достаточно длинная, чтобы не поместиться в первый кусок.";
+        const string second = "Вторая фраза тоже не короткая, поэтому идёт отдельно.";
+        tts.Speak("u", first + " " + second);
         for (var i = 1; i <= 2; i++)
         {
             await player.WaitForPlayAsync(i);
@@ -29,7 +32,7 @@ public class OmniVoiceEngineTests
 
         Assert.Equal("u", await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         var speech = SpeechBodies(http);
-        Assert.Equal(new[] { "Первая фраза.", "Вторая фраза." }, speech.Select(body => Field(body, "input")));
+        Assert.Equal(new[] { first, second }, speech.Select(body => Field(body, "input")));
         Assert.All(speech, body =>
         {
             Assert.Equal(OmniVoiceTtsSettingsDto.DefaultModel, Field(body, "model"));

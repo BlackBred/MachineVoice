@@ -57,6 +57,28 @@ public class SpeechChunksTests
     }
 
     [Fact]
+    public void Split_PacksSentences_UpToTheLimits_AndEndsHeadingsWithAStop()
+    {
+        var sentence = "Сборка прошла, и все тесты на этот раз тоже прошли.";
+        var text = "Итоги\n" + string.Join(" ", Enumerable.Repeat(sentence, 9));
+
+        var chunks = SpeechChunks.Split(text, pack: true);
+
+        Assert.StartsWith("Итоги. " + sentence, chunks[0].Text);
+        Assert.True(chunks[0].Text.Length <= SpeechChunks.FirstLimit);
+        Assert.All(chunks, chunk => Assert.True(chunk.Text.Length <= SpeechChunks.Limit));
+        Assert.True(chunks.Count < SpeechChunks.Split(text).Count);
+        Assert.Equal(SpeechChunks.Words(text), chunks.SelectMany(chunk => chunk.Words));
+        var first = 0;
+        foreach (var chunk in chunks)
+        {
+            Assert.Equal(first, chunk.FirstWord);
+            Assert.Equal(SpeechChunks.Words(chunk.Text), chunk.Words);
+            first += chunk.Words.Count;
+        }
+    }
+
+    [Fact]
     public void WordStarts_MapsMarksToTheClientsWords_AndFillsTheGaps()
     {
         // Words: Готово, файл, Program, cs. The first mark starts at the quote, "cs" has no mark of its own.
@@ -211,6 +233,45 @@ public class ChunkedAudioEngineTests
     {
         Assert.Equal(0.5, WavFile.Seconds(WavFile.Mono16(new float[11025], 22050)));
         Assert.Null(WavFile.Seconds([1, 2, 3]));
+    }
+
+    [Fact]
+    public void TrimStart_CutsTheQuietBeforeSpeech_MutesTheClick_AndFadesTheEnds()
+    {
+        const int rate = 1000;
+        // A click, 0.8 s of quiet, a second of speech that stops at full level.
+        var samples = new float[40 + 760 + 1000];
+        samples.AsSpan(0, 40).Fill(0.05f);
+        for (var i = 800; i < samples.Length; i++)
+            samples[i] = i % 2 == 0 ? 0.4f : -0.4f;
+
+        var trimmed = WavFile.TrimStart(WavFile.Mono16(samples, rate), TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(40));
+
+        Assert.Equal(1.25, WavFile.Seconds(trimmed)!.Value, 2);
+        var pcm = Pcm(trimmed);
+        Assert.All(pcm[..250], sample => Assert.Equal(0, sample));
+        Assert.InRange(Math.Abs((int)pcm[600]), 13000, 13200);
+        Assert.True(Math.Abs((int)pcm[^1]) < 0.1 * short.MaxValue);
+
+        // Speech within the lead keeps the clip as long as it is; only the click goes.
+        var early = new float[400];
+        early.AsSpan(0, 40).Fill(0.05f);
+        early.AsSpan(200).Fill(0.4f);
+        var kept = Pcm(WavFile.TrimStart(WavFile.Mono16(early, rate), TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(40)));
+        Assert.Equal(400, kept.Length);
+        Assert.All(kept[..40], sample => Assert.Equal(0, sample));
+
+        byte[] notPcm = [1, 2, 3];
+        Assert.Same(notPcm, WavFile.TrimStart(notPcm, TimeSpan.FromMilliseconds(250), TimeSpan.Zero));
+        var silent = WavFile.Mono16(new float[500], rate);
+        Assert.Same(silent, WavFile.TrimStart(silent, TimeSpan.FromMilliseconds(250), TimeSpan.Zero));
+    }
+
+    static short[] Pcm(byte[] wav)
+    {
+        var samples = new short[(wav.Length - 44) / 2];
+        Buffer.BlockCopy(wav, 44, samples, 0, samples.Length * 2);
+        return samples;
     }
 
     static async Task WaitForWordAsync(TtsRecorder recorder, int wordIndex)

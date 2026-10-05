@@ -120,6 +120,9 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
     /// <summary>The request for one chunk; throws when the settings cannot be met (a voice that is gone).</summary>
     private protected abstract SpeechRequest Request(TSettings settings, string text);
 
+    /// <summary>The clip as it plays.</summary>
+    private protected virtual byte[] Clean(byte[] wav) => wav;
+
     /// <summary>
     /// One clip outside an utterance, with any settings of this model: starts the server and loads the model
     /// first, so the first call may take as long as a download.
@@ -145,7 +148,7 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
             }
 
             linked.CancelAfter(ChunkTimeout);
-            return await _client.SynthesizeAsync(settings, request, linked.Token).ConfigureAwait(false);
+            return Clean(await _client.SynthesizeAsync(settings, request, linked.Token).ConfigureAwait(false));
         }
         finally
         {
@@ -223,7 +226,7 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
         public async Task<SpeechAudio> SynthesizeAsync(string text, CancellationToken cancellationToken)
         {
             var request = owner.Request(settings, text);
-            return new SpeechAudio(await owner._client.SynthesizeAsync(settings, request, cancellationToken).ConfigureAwait(false));
+            return new SpeechAudio(owner.Clean(await owner._client.SynthesizeAsync(settings, request, cancellationToken).ConfigureAwait(false)));
         }
 
         public void Dispose() => owner.End(settings);

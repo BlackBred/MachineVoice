@@ -13,7 +13,10 @@ public static class SpeechChunks
     public const int FirstLimit = 100;
     public const int Limit = 220;
 
-    public static IReadOnlyList<SpeechChunk> Split(string text)
+    /// <param name="pack">
+    /// Join sentences into chunks up to the limits, for a synthesizer that pays a fixed cost for every request.
+    /// </param>
+    public static IReadOnlyList<SpeechChunk> Split(string text, bool pack = false)
     {
         var pieces = new List<string>();
         foreach (var sentence in Sentences(text))
@@ -27,14 +30,14 @@ public static class SpeechChunks
         string? pending = null;
         for (var i = 0; i < pieces.Count; i++)
         {
-            var piece = pending is null ? pieces[i] : pending + " " + pieces[i];
+            var piece = pending is null ? pieces[i] : Join(pending, pieces[i]);
             pending = null;
             var words = Words(piece);
             if (words.Count == 0)
                 continue;
 
             // A lone list number or a one-word fragment sounds better together with what follows.
-            if (words.Count == 1 && i + 1 < pieces.Count && piece.Length + 1 + pieces[i + 1].Length <= Limit)
+            if (words.Count == 1 && i + 1 < pieces.Count && piece.Length + 2 + pieces[i + 1].Length <= Limit)
             {
                 pending = piece;
                 continue;
@@ -44,8 +47,34 @@ public static class SpeechChunks
             firstWord += words.Count;
         }
 
-        return chunks;
+        return pack ? Pack(chunks) : chunks;
     }
+
+    static List<SpeechChunk> Pack(List<SpeechChunk> chunks)
+    {
+        var packed = new List<SpeechChunk>(chunks.Count);
+        foreach (var chunk in chunks)
+        {
+            if (packed.Count > 0)
+            {
+                var last = packed[^1];
+                var text = Join(last.Text, chunk.Text);
+                if (text.Length <= (packed.Count == 1 ? FirstLimit : Limit))
+                {
+                    packed[^1] = new SpeechChunk(text, last.FirstWord, [.. last.Words, .. chunk.Words]);
+                    continue;
+                }
+            }
+
+            packed.Add(chunk);
+        }
+
+        return packed;
+    }
+
+    // A heading or a list item has no full stop; without one the voice runs it into the next sentence.
+    static string Join(string first, string second) =>
+        char.IsLetterOrDigit(first[^1]) ? first + ". " + second : first + " " + second;
 
     public static List<string> Words(string text) => WordRanges(text).Select(range => text.Substring(range.Start, range.Length)).ToList();
 

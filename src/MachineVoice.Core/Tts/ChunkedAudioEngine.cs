@@ -48,6 +48,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
     readonly string _name;
     readonly TimeSpan _chunkTimeout;
     readonly int _lookahead;
+    readonly bool _packSentences;
     readonly Action<string>? _log;
     Utterance? _current;
     bool _disposed;
@@ -55,19 +56,22 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
     /// <param name="name">Engine name for the log.</param>
     /// <param name="chunkTimeout">How long one chunk may take to synthesize.</param>
     /// <param name="lookahead">How many chunks past the one that plays are synthesized ahead.</param>
+    /// <param name="packSentences">Several sentences per chunk, see <see cref="SpeechChunks.Split"/>.</param>
     public ChunkedAudioEngine(
         IAudioPlayer player,
         IChunkSynthesizer synthesizer,
         string name,
         TimeSpan chunkTimeout,
         Action<string>? log = null,
-        int lookahead = DefaultLookahead)
+        int lookahead = DefaultLookahead,
+        bool packSentences = false)
     {
         _player = player;
         _synthesizer = synthesizer;
         _name = name;
         _chunkTimeout = chunkTimeout;
         _lookahead = Math.Max(lookahead, 0);
+        _packSentences = packSentences;
         _log = log;
     }
 
@@ -105,7 +109,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
 
         // The previous session ends before the next begins: a server goes idle, then busy again.
         previous?.End();
-        var next = new Utterance(utteranceId, text, _synthesizer.Begin());
+        var next = new Utterance(utteranceId, SpeechChunks.Split(text, _packSentences), _synthesizer.Begin());
         lock (_gate)
         {
             if (_disposed)
@@ -616,11 +620,11 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
         TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int _ended;
 
-        public Utterance(string id, string text, ISynthesisSession session)
+        public Utterance(string id, IReadOnlyList<SpeechChunk> chunks, ISynthesisSession session)
         {
             Id = id;
             Session = session;
-            Chunks = SpeechChunks.Split(text);
+            Chunks = chunks;
             Slots = Chunks.Select(_ => new Slot()).ToArray();
         }
 
