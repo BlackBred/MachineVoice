@@ -23,6 +23,18 @@ public sealed class ControlState
     public SpeechItemDto? Confirmation { get; private set; }
     public IReadOnlyList<SpeechItemDto> Queue { get; private set; } = [];
 
+    /// <summary>
+    /// <see cref="Queue"/> without the item on screen: the one awaiting confirmation stays at the head of the queue.
+    /// </summary>
+    public IEnumerable<SpeechItemDto> Waiting
+    {
+        get
+        {
+            var shownId = Current?.Id ?? Confirmation?.Id;
+            return Queue.Where(item => item.Id != shownId);
+        }
+    }
+
     /// <summary>Oldest first, at most <see cref="HistoryLimit"/> entries.</summary>
     public IReadOnlyList<HistoryEntryDto> History => _history;
 

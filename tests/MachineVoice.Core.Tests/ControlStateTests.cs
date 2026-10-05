@@ -74,6 +74,20 @@ public class ControlStateTests
     }
 
     [Fact]
+    public void Waiting_LeavesOutTheItemAwaitingConfirmation()
+    {
+        var shown = new SpeechItemDto { Id = "a" };
+        var next = new SpeechItemDto { Id = "b" };
+        var state = new ControlState();
+        state.Reset(new SnapshotDto { Confirmation = shown, Queue = [shown, next] });
+        Assert.Equal(["b"], state.Waiting.Select(item => item.Id));
+
+        state.Apply(new ConfirmationClearedEvent { ItemId = "a" });
+        state.Apply(new QueueChangedEvent { Items = [next] });
+        Assert.Equal(["b"], state.Waiting.Select(item => item.Id));
+    }
+
+    [Fact]
     public void History_IsCapped()
     {
         var state = new ControlState();

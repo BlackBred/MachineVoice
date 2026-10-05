@@ -44,15 +44,34 @@
     </Style>
   </Window.Styles>
 
-  <Border Background="#F01F1F23"
+  <Border x:Name="Pill"
+          Background="#F01F1F23"
           BorderBrush="#33FFFFFF"
           BorderThickness="1"
           CornerRadius="28"
           Padding="20,10,10,10"
           Margin="8"
           Width="540">
-    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-      <StackPanel VerticalAlignment="Center" Spacing="2">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <Border x:Name="QueueBadge"
+              MinWidth="30"
+              Height="30"
+              CornerRadius="15"
+              Padding="6,0"
+              Background="#26FFFFFF"
+              BorderBrush="#40FFFFFF"
+              BorderThickness="1"
+              VerticalAlignment="Center"
+              IsVisible="False">
+        <TextBlock x:Name="QueueCountText"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   Foreground="White" />
+      </Border>
+
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
         <TextBlock x:Name="TitleText"
                    FontWeight="SemiBold"
                    Foreground="White"
@@ -70,7 +89,7 @@
       </StackPanel>
 
       <StackPanel x:Name="PlaybackButtons"
-                  Grid.Column="1"
+                  Grid.Column="2"
                   Orientation="Horizontal"
                   Spacing="2"
                   VerticalAlignment="Center">
@@ -101,7 +120,7 @@
       </StackPanel>
 
       <StackPanel x:Name="ConfirmButtons"
-                  Grid.Column="1"
+                  Grid.Column="2"
                   Orientation="Horizontal"
                   Spacing="6"
                   VerticalAlignment="Center"

@@ -102,14 +102,15 @@ sealed class TrayMenu : IDisposable
     {
         var items = _queue.Menu!.Items;
         items.Clear();
-        _queue.Header = state.Queue.Count == 0 ? "Очередь" : $"Очередь ({state.Queue.Count})";
-        if (state.Queue.Count == 0)
+        var waiting = state.Waiting.ToList();
+        _queue.Header = waiting.Count == 0 ? "Очередь" : $"Очередь ({waiting.Count})";
+        if (waiting.Count == 0)
         {
             items.Add(new NativeMenuItem("Пусто") { IsEnabled = false });
             return;
         }
 
-        foreach (var queued in state.Queue)
+        foreach (var queued in waiting)
             items.Add(new NativeMenuItem(Labels.Line(queued)) { IsEnabled = false });
     }
 

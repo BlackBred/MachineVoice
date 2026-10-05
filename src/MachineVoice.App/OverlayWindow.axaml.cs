@@ -45,6 +45,8 @@ public partial class OverlayWindow : Window
 
     public void Update(ControlState state)
     {
+        UpdateQueueBadge(state);
+
         if (state.Current is { } item)
         {
             var paused = state.Player == PlayerState.Paused;
@@ -71,6 +73,15 @@ public partial class OverlayWindow : Window
     }
 
     public void UpdateProgress(ControlState state) => ProgressLine.Value = state.Progress ?? 0;
+
+    void UpdateQueueBadge(ControlState state)
+    {
+        var waiting = state.Waiting.Count();
+        QueueBadge.IsVisible = waiting > 0;
+        QueueCountText.Text = waiting > 99 ? "99+" : waiting.ToString();
+        ToolTip.SetTip(QueueBadge, $"В очереди: {waiting}");
+        Pill.Padding = waiting > 0 ? new Thickness(13, 10, 10, 10) : new Thickness(20, 10, 10, 10);
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
