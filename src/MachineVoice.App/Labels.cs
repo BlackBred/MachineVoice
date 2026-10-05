@@ -42,7 +42,7 @@ static class Labels
         { Player: PlayerState.Speaking, Current: { } item } => "Читает: " + Line(item, 60),
         { Player: PlayerState.Paused, Current: { } item } => "Пауза: " + Line(item, 60),
         { Confirmation: { } item } => "Ждёт подтверждения: " + Line(item, 50),
-        { Holding: true, Queue.Count: > 0 } => $"Остановлено, в очереди {state.Queue.Count}",
+        { Holding: true, Queue.Count: > 0 } => $"Сбой озвучивания, в очереди {state.Queue.Count}",
         { Mode: PlaybackMode.Silent, Queue.Count: > 0 } => $"Тихий режим, в очереди {state.Queue.Count}",
         _ => "Тишина",
     };

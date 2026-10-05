@@ -32,6 +32,8 @@ sealed class SpeechEngine : IAsyncDisposable
     PlayerState _player = PlayerState.Idle;
     SpeechItem? _current;
     string? _confirmationItemId;
+
+    // Set when the TTS engine refused to speak, so one failure does not run through the whole queue.
     bool _hold;
     Task? _loop;
     int _disposed;
@@ -506,7 +508,6 @@ sealed class SpeechEngine : IAsyncDisposable
         {
             PauseCommand => Pause(command.Id),
             ResumeCommand => Resume(command.Id),
-            StopCommand => Stop(command.Id),
             SkipCommand => Skip(command.Id),
             SetModeCommand setMode => ApplyMode(command.Id, setMode.Mode),
             SetPlaybackRateCommand setRate => ApplyPlaybackRate(command.Id, setRate.Rate),
@@ -572,21 +573,6 @@ sealed class SpeechEngine : IAsyncDisposable
         return Ok(id);
     }
 
-    ResultMessage Stop(string id)
-    {
-        if (_current is null || _player is not (PlayerState.Speaking or PlayerState.Paused))
-            return Fail(id, ProtocolErrors.InvalidState);
-
-        var item = _current;
-        _tts.Stop();
-        _current = null;
-        _player = PlayerState.Idle;
-        _hold = true;
-        Publish(new PlayerStateEvent { State = PlayerState.Idle });
-        Archive(item, SpeechOutcome.Stopped);
-        return Ok(id);
-    }
-
     ResultMessage Skip(string id)
     {
         _hold = false;
@@ -616,19 +602,30 @@ sealed class SpeechEngine : IAsyncDisposable
         return Ok(id);
     }
 
+    /// <summary>Reads a waiting response now, in any mode; the one being read is skipped.</summary>
     ResultMessage Listen(string id, string itemId)
     {
         if (string.IsNullOrWhiteSpace(itemId))
             return Fail(id, ProtocolErrors.InvalidArgument);
-        if (_confirmationItemId != itemId || _player != PlayerState.Idle)
-            return Fail(id, _confirmationItemId == itemId ? ProtocolErrors.InvalidState : ProtocolErrors.NotFound);
-
-        var item = TakeQueued(itemId);
-        if (item is null)
+        var waiting = _queue.Find(item => item.Id == itemId);
+        if (waiting is null)
             return Fail(id, ProtocolErrors.NotFound);
+        if (waiting.Speech is null)
+            return Fail(id, ProtocolErrors.InvalidState);
 
+        var item = TakeQueued(itemId)!;
         ClearConfirmation();
         PublishQueue();
+        if (_current is { } playing)
+        {
+            _tts.Stop();
+            _current = null;
+            _player = PlayerState.Idle;
+            Publish(new PlayerStateEvent { State = PlayerState.Idle });
+            Archive(playing, SpeechOutcome.Skipped);
+        }
+
+        _hold = false;
         BeginSpeak(item);
         return Ok(id);
     }

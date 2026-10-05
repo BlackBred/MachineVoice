@@ -17,7 +17,7 @@ public sealed class ControlState
     public SpeechItemDto? Current { get; private set; }
     public PlaybackMode Mode { get; private set; }
 
-    /// <summary>Stop holds the queue until resume. Derived from events, exact after every snapshot.</summary>
+    /// <summary>A speech failure holds the queue until resume. Derived from events, exact after every snapshot.</summary>
     public bool Holding { get; private set; }
 
     public SpeechItemDto? Confirmation { get; private set; }

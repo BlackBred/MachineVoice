@@ -50,6 +50,7 @@ public enum SpeechOutcome
     [JsonStringEnumMemberName("skipped")]
     Skipped,
 
+    /// <summary>The TTS engine failed to speak it. Older history also has responses stopped by the user.</summary>
     [JsonStringEnumMemberName("stopped")]
     Stopped,
 }

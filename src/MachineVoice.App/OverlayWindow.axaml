@@ -13,7 +13,6 @@
   <Window.Resources>
     <StreamGeometry x:Key="PauseGlyph">M3,2 L6.5,2 L6.5,14 L3,14 Z M9.5,2 L13,2 L13,14 L9.5,14 Z</StreamGeometry>
     <StreamGeometry x:Key="PlayGlyph">M4,1.5 L14,8 L4,14.5 Z</StreamGeometry>
-    <StreamGeometry x:Key="StopGlyph">M3,3 L13,3 L13,13 L3,13 Z</StreamGeometry>
     <StreamGeometry x:Key="SkipGlyph">M2,2 L10,8 L2,14 Z M11,2 L14,2 L14,14 L11,14 Z</StreamGeometry>
     <StreamGeometry x:Key="ChatGlyph">M1.5,2.5 L14.5,2.5 L14.5,11 L7.5,11 L4,14.5 L4,11 L1.5,11 Z</StreamGeometry>
     <StreamGeometry x:Key="MinusGlyph">M2,7 L14,7 L14,9 L2,9 Z</StreamGeometry>
@@ -114,9 +113,6 @@
         </Button>
         <Button x:Name="PauseButton" Classes="icon" Click="OnPause" ToolTip.Tip="Пауза">
           <PathIcon x:Name="PauseIcon" Data="{StaticResource PauseGlyph}" />
-        </Button>
-        <Button Classes="icon" Click="OnStop" ToolTip.Tip="Стоп">
-          <PathIcon Data="{StaticResource StopGlyph}" />
         </Button>
         <Button Classes="icon" Click="OnSkip" ToolTip.Tip="Пропустить">
           <PathIcon Data="{StaticResource SkipGlyph}" />

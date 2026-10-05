@@ -9,7 +9,6 @@ public interface IControlClient : IAsyncDisposable
 
     Task<ResultMessage> PauseAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> ResumeAsync(CancellationToken cancellationToken = default);
-    Task<ResultMessage> StopAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> SkipAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> SetModeAsync(PlaybackMode mode, CancellationToken cancellationToken = default);
     Task<ResultMessage> SetPlaybackRateAsync(double rate, CancellationToken cancellationToken = default);

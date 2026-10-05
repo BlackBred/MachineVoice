@@ -26,7 +26,6 @@ public partial class OverlayWindow : Window
     public event Action? SlowerRequested;
     public event Action? FasterRequested;
     public event Action? PauseResumeRequested;
-    public event Action? StopRequested;
     public event Action? SkipRequested;
     public event Action? OpenChatRequested;
     public event Action? ListenRequested;
@@ -120,7 +119,6 @@ public partial class OverlayWindow : Window
     void OnSlower(object? sender, RoutedEventArgs e) => SlowerRequested?.Invoke();
     void OnFaster(object? sender, RoutedEventArgs e) => FasterRequested?.Invoke();
     void OnPause(object? sender, RoutedEventArgs e) => PauseResumeRequested?.Invoke();
-    void OnStop(object? sender, RoutedEventArgs e) => StopRequested?.Invoke();
     void OnSkip(object? sender, RoutedEventArgs e) => SkipRequested?.Invoke();
     void OnOpenChat(object? sender, RoutedEventArgs e) => OpenChatRequested?.Invoke();
     void OnListen(object? sender, RoutedEventArgs e) => ListenRequested?.Invoke();

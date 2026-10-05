@@ -10,7 +10,6 @@ public static class ProtocolCodec
     {
         PauseCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.PauseCommand),
         ResumeCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ResumeCommand),
-        StopCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.StopCommand),
         SkipCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SkipCommand),
         SetModeCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SetModeCommand),
         SetPlaybackRateCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SetPlaybackRateCommand),
@@ -66,7 +65,6 @@ public static class ProtocolCodec
             {
                 "pause" => root.Deserialize(ProtocolJsonContext.Default.PauseCommand),
                 "resume" => root.Deserialize(ProtocolJsonContext.Default.ResumeCommand),
-                "stop" => root.Deserialize(ProtocolJsonContext.Default.StopCommand),
                 "skip" => root.Deserialize(ProtocolJsonContext.Default.SkipCommand),
                 "setMode" => root.Deserialize(ProtocolJsonContext.Default.SetModeCommand),
                 "setPlaybackRate" => root.Deserialize(ProtocolJsonContext.Default.SetPlaybackRateCommand),

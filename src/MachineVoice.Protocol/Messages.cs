@@ -16,11 +16,6 @@ public sealed class ResumeCommand : ClientMessage
     public string Type { get; init; } = "resume";
 }
 
-public sealed class StopCommand : ClientMessage
-{
-    public string Type { get; init; } = "stop";
-}
-
 public sealed class SkipCommand : ClientMessage
 {
     public string Type { get; init; } = "skip";

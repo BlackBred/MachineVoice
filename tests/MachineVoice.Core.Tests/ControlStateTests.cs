@@ -33,9 +33,11 @@ public class ControlStateTests
         Assert.True((await client.PauseAsync()).Ok);
         await mirror.MatchesAsync(client);
         var second = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g2", "второй"));
+        await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g2b", "сбой"));
         await mirror.MatchesAsync(client);
 
-        Assert.True((await client.StopAsync()).Ok);
+        tts.FailNextSpeak = true;
+        Assert.True((await client.SkipAsync()).Ok);
         await mirror.MatchesAsync(client);
         Assert.True(mirror.Read(state => state.Holding));
         Assert.Equal(ProtocolErrors.InvalidState, (await client.SeekAsync(1)).Error);

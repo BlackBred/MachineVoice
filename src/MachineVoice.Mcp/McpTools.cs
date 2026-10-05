@@ -40,10 +40,9 @@ static class McpTools
         new(
             "machinevoice_playback",
             "Control playback",
-            "pause: pause the current response. resume: continue a paused response, or start the queue again after stop. " +
-            "stop: stop the current response; the queue waits until resume. skip: drop the current response, " +
-            "the one awaiting confirmation or the queue head, and move on.",
-            () => Schema(new JsonObject { ["action"] = Enum("What to do.", "pause", "resume", "stop", "skip") }, "action"),
+            "pause: pause the current response. resume: continue a paused response, or start the queue again after " +
+            "a speech failure. skip: drop the current response, the one awaiting confirmation or the queue head, and move on.",
+            () => Schema(new JsonObject { ["action"] = Enum("What to do.", "pause", "resume", "skip") }, "action"),
             () => new JsonObject { ["readOnlyHint"] = false, ["destructiveHint"] = false, ["openWorldHint"] = false },
             PlaybackAsync),
         new(
@@ -128,7 +127,7 @@ static class McpTools
             ["player"] = Name(snapshot.Player, ProtocolJsonContext.Default.PlayerState),
             ["mode"] = Name(snapshot.Mode, ProtocolJsonContext.Default.PlaybackMode),
             ["order"] = Name(snapshot.Settings.Order, ProtocolJsonContext.Default.QueueOrder),
-            ["stoppedUntilResume"] = snapshot.Holding,
+            ["heldAfterFailure"] = snapshot.Holding,
             ["current"] = Item(snapshot.Current),
             ["awaitingConfirmation"] = Item(snapshot.Confirmation),
             ["queue"] = new JsonArray(snapshot.Queue.Select(item => Item(item)).ToArray()),
@@ -171,12 +170,11 @@ static class McpTools
         {
             "pause" => client.PauseAsync(cancellationToken),
             "resume" => client.ResumeAsync(cancellationToken),
-            "stop" => client.StopAsync(cancellationToken),
             "skip" => client.SkipAsync(cancellationToken),
             _ => null,
         };
         if (command is null)
-            return ToolResult.Fail("action must be one of: pause, resume, stop, skip.");
+            return ToolResult.Fail("action must be one of: pause, resume, skip.");
 
         var result = await command.ConfigureAwait(false);
         return result.Ok ? ToolResult.Ok($"Done: {action}.") : Rejected(result);

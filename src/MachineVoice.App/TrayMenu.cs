@@ -14,7 +14,6 @@ sealed class TrayMenu : IDisposable
     readonly TrayIcon _icon;
     readonly NativeMenuItem _status = new() { IsEnabled = false };
     readonly NativeMenuItem _pause = new("Пауза");
-    readonly NativeMenuItem _stop = new("Стоп");
     readonly NativeMenuItem _skip = new("Пропустить");
     readonly NativeMenuItem _queue = new("Очередь") { Menu = new NativeMenu() };
     readonly NativeMenuItem _history = new("История") { Menu = new NativeMenu() };
@@ -32,7 +31,6 @@ sealed class TrayMenu : IDisposable
         }
 
         _pause.Click += (_, _) => PauseResumeRequested?.Invoke();
-        _stop.Click += (_, _) => StopRequested?.Invoke();
         _skip.Click += (_, _) => SkipRequested?.Invoke();
         var settings = new NativeMenuItem("Настройки…");
         settings.Click += (_, _) => SettingsRequested?.Invoke();
@@ -43,7 +41,6 @@ sealed class TrayMenu : IDisposable
         menu.Items.Add(_status);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(_pause);
-        menu.Items.Add(_stop);
         menu.Items.Add(_skip);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(new NativeMenuItem("Режим") { Menu = modes });
@@ -66,9 +63,9 @@ sealed class TrayMenu : IDisposable
     }
 
     public event Action? PauseResumeRequested;
-    public event Action? StopRequested;
     public event Action? SkipRequested;
     public event Action<PlaybackMode>? ModeRequested;
+    public event Action<string>? ListenRequested;
     public event Action<string>? OpenChatRequested;
     public event Action? SettingsRequested;
     public event Action? QuitRequested;
@@ -82,7 +79,6 @@ sealed class TrayMenu : IDisposable
         var resumable = state.Player == PlayerState.Paused || (state.Player == PlayerState.Idle && state.Holding && state.Queue.Count > 0);
         _pause.Header = resumable ? "Продолжить" : "Пауза";
         _pause.IsEnabled = resumable || state.Player == PlayerState.Speaking;
-        _stop.IsEnabled = state.Player != PlayerState.Idle;
         _skip.IsEnabled = state.Current is not null || state.Confirmation is not null || state.Queue.Count > 0;
 
         foreach (var (mode, item) in _modes)
@@ -111,7 +107,17 @@ sealed class TrayMenu : IDisposable
         }
 
         foreach (var queued in waiting)
-            items.Add(new NativeMenuItem(Labels.Line(queued)) { IsEnabled = false });
+        {
+            // A response still being retold has no speech yet; the engine would refuse to read it.
+            var item = new NativeMenuItem(Labels.Line(queued))
+            {
+                IsEnabled = queued.Speech is not null,
+                ToolTip = "Слушать сейчас",
+            };
+            var id = queued.Id;
+            item.Click += (_, _) => ListenRequested?.Invoke(id);
+            items.Add(item);
+        }
     }
 
     void UpdateHistory(ControlState state)

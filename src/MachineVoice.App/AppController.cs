@@ -122,7 +122,6 @@ sealed class AppController
         _overlay.SlowerRequested += () => StepRate(-RateStep);
         _overlay.FasterRequested += () => StepRate(RateStep);
         _overlay.PauseResumeRequested += PauseResume;
-        _overlay.StopRequested += () => Send(client => client.StopAsync());
         _overlay.SkipRequested += () => Send(client => client.SkipAsync());
         _overlay.OpenChatRequested += () =>
         {
@@ -142,9 +141,9 @@ sealed class AppController
 
         _tray = new TrayMenu(_application);
         _tray.PauseResumeRequested += PauseResume;
-        _tray.StopRequested += () => Send(client => client.StopAsync());
         _tray.SkipRequested += () => Send(client => client.SkipAsync());
         _tray.ModeRequested += mode => Send(client => client.SetModeAsync(mode));
+        _tray.ListenRequested += id => Send(client => client.ListenAsync(id));
         _tray.OpenChatRequested += id => Send(client => client.OpenChatAsync(id));
         _tray.SettingsRequested += ShowSettings;
         _tray.QuitRequested += () => _ = QuitAsync();

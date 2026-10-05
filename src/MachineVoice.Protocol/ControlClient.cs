@@ -8,9 +8,6 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> ResumeAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new ResumeCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 
-    public Task<ResultMessage> StopAsync(CancellationToken cancellationToken = default) =>
-        SendAsync(new StopCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
-
     public Task<ResultMessage> SkipAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new SkipCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 

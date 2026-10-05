@@ -59,9 +59,12 @@ public class ControlSocketTests
         await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == second.Id);
         var third = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g3", "third"));
         await log.TakeAsync<QueueChangedEvent>(queue => queue.Items.Any(item => item.Id == third.Id));
+        var failing = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g3b", "fails"));
+        await log.TakeAsync<QueueChangedEvent>(queue => queue.Items.Any(item => item.Id == failing.Id));
 
-        Assert.True((await client.StopAsync()).Ok);
-        Assert.Equal(second.Id, (await log.TakeAsync<HistoryAppendedEvent>(entry => entry.Entry.Outcome == SpeechOutcome.Stopped)).Entry.Item.Id);
+        tts.FailNextSpeak = true;
+        tts.Complete();
+        Assert.Equal(failing.Id, (await log.TakeAsync<HistoryAppendedEvent>(entry => entry.Entry.Outcome == SpeechOutcome.Stopped)).Entry.Item.Id);
         await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Idle);
         var held = await client.GetSnapshotAsync();
         Assert.True(held.Snapshot!.Holding);

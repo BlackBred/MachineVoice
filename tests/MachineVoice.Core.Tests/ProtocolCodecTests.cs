@@ -76,7 +76,6 @@ public class ProtocolCodecTests
         [
             new PauseCommand { Version = 1, Id = "p" },
             new ResumeCommand { Version = 1, Id = "r" },
-            new StopCommand { Version = 1, Id = "s" },
             new SkipCommand { Version = 1, Id = "k" },
             new SetModeCommand { Version = 1, Id = "m", Mode = PlaybackMode.Silent },
             new SetPlaybackRateCommand { Version = 1, Id = "v", Rate = 1.25 },

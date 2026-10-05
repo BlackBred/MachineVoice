@@ -10,6 +10,9 @@ sealed class ManualTtsEngine : ISeekableTtsEngine
     public string? Text { get; private set; }
     public bool IsPaused { get; private set; }
 
+    /// <summary>The next <see cref="Speak"/> throws, as an engine that cannot start would.</summary>
+    public bool FailNextSpeak { get; set; }
+
     public event EventHandler<TtsProgressEventArgs>? Progress;
     public event EventHandler<TtsCompletedEventArgs>? Completed;
 
@@ -17,6 +20,12 @@ sealed class ManualTtsEngine : ISeekableTtsEngine
     {
         lock (_gate)
         {
+            if (FailNextSpeak)
+            {
+                FailNextSpeak = false;
+                throw new InvalidOperationException("Speech failed.");
+            }
+
             UtteranceId = utteranceId;
             Text = text;
             IsPaused = false;

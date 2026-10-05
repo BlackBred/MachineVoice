@@ -80,11 +80,38 @@ public class QueuePolicyTests
         var snapshot = await client.GetSnapshotAsync();
         Assert.Equal(second.Id, snapshot.Snapshot!.Confirmation!.Id);
         Assert.Equal(["b", "a"], snapshot.Snapshot.Queue.Select(item => item.GenerationId).ToArray());
-        Assert.Equal(ProtocolErrors.NotFound, (await client.ListenAsync(first.Id!)).Error);
 
         Assert.True((await client.DismissAsync(second.Id!)).Ok);
         await log.TakeAsync<ConfirmationRequestedEvent>(confirmation => confirmation.Item.Id == first.Id);
         Assert.Null(tts.UtteranceId);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Listen_ReadsAnyWaitingResponseNow()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var host = await TestHost.StartAsync(root.Path, tts);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+
+        var first = await IngestClient.SubmitAsync(host.IngestSocketPath, Draft("a"));
+        var second = await IngestClient.SubmitAsync(host.IngestSocketPath, Draft("b"));
+        var third = await IngestClient.SubmitAsync(host.IngestSocketPath, Draft("c"));
+        Assert.Equal(first.Id, tts.UtteranceId);
+
+        Assert.True((await client.ListenAsync(second.Id!)).Ok);
+        Assert.Equal(first.Id, (await log.TakeAsync<HistoryAppendedEvent>(entry => entry.Entry.Outcome == SpeechOutcome.Skipped)).Entry.Item.Id);
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == second.Id);
+        Assert.Equal(second.Id, tts.UtteranceId);
+        Assert.Equal(["c"], await QueueAsync(client));
+
+        Assert.True((await client.SetModeAsync(PlaybackMode.Silent)).Ok);
+        Assert.True((await client.ListenAsync(third.Id!)).Ok);
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == third.Id);
+        Assert.Empty(await QueueAsync(client));
+        Assert.Equal(ProtocolErrors.NotFound, (await client.ListenAsync(first.Id!)).Error);
         await host.DisposeAsync();
     }
 

@@ -8,7 +8,6 @@ namespace MachineVoice.Protocol;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(PauseCommand))]
 [JsonSerializable(typeof(ResumeCommand))]
-[JsonSerializable(typeof(StopCommand))]
 [JsonSerializable(typeof(SkipCommand))]
 [JsonSerializable(typeof(SetModeCommand))]
 [JsonSerializable(typeof(SetPlaybackRateCommand))]
