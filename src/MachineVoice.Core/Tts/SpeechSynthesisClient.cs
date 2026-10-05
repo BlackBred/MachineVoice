@@ -4,21 +4,11 @@ using MachineVoice.Protocol;
 
 namespace MachineVoice.Core;
 
-/// <summary>
-/// The OpenAI-compatible speech endpoint of mlx-audio. The sampling fields are mlx-audio extensions: its own
-/// defaults (temperature 0.7, no repetition penalty) make Qwen3-TTS run on long after the text has been read.
-/// </summary>
+/// <summary>The OpenAI-compatible speech endpoint of mlx-audio and its model management.</summary>
 sealed class SpeechSynthesisClient(HttpClient http)
 {
-    public async Task<byte[]> SynthesizeAsync(QwenTtsSettingsDto settings, string text, CancellationToken cancellationToken)
+    public async Task<byte[]> SynthesizeAsync(IMlxModelSettings settings, SpeechRequest request, CancellationToken cancellationToken)
     {
-        var request = new SpeechRequest
-        {
-            Model = settings.Model,
-            Input = text,
-            Voice = settings.Voice,
-            MaxTokens = MaxTokens(text),
-        };
         using var message = new HttpRequestMessage(HttpMethod.Post, Url(settings, "/audio/speech"))
         {
             Content = JsonContent.Create(request, SpeechJsonContext.Default.SpeechRequest),
@@ -32,19 +22,26 @@ sealed class SpeechSynthesisClient(HttpClient http)
     }
 
     /// <summary>Loads the model ahead of the first phrase. The first call also downloads it.</summary>
-    public async Task LoadModelAsync(QwenTtsSettingsDto settings, CancellationToken cancellationToken)
+    public async Task LoadModelAsync(IMlxModelSettings settings, CancellationToken cancellationToken)
     {
-        var url = Url(settings, "/models") + "?model_name=" + Uri.EscapeDataString(settings.Model);
-        using var response = await http.PostAsync(url, content: null, cancellationToken).ConfigureAwait(false);
+        using var response = await http.PostAsync(ModelUrl(settings), content: null, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Frees the model's memory in a server that keeps running for another model.</summary>
+    public async Task UnloadModelAsync(IMlxModelSettings settings, CancellationToken cancellationToken)
+    {
+        using var response = await http.DeleteAsync(ModelUrl(settings), cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
     const int WavHeaderSize = 44;
 
-    // About one 12.5 Hz codec token per character of speech; the margin covers numbers read out in words.
-    static int MaxTokens(string text) => 50 + text.Length * 5 / 2;
+    static string ModelUrl(IMlxModelSettings settings) =>
+        Url(settings, "/models") + "?model_name=" + Uri.EscapeDataString(settings.Model);
 
-    static string Url(QwenTtsSettingsDto settings, string path) => settings.Endpoint.Trim().TrimEnd('/') + path;
+    static string Url(IMlxModelSettings settings, string path) => settings.Endpoint.Trim().TrimEnd('/') + path;
 
     static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
@@ -58,19 +55,31 @@ sealed class SpeechSynthesisClient(HttpClient http)
     }
 }
 
+/// <summary>
+/// Fields beyond the OpenAI ones are mlx-audio extensions; each model reads the ones it knows. Unset fields are
+/// left out and keep the server defaults.
+/// </summary>
 sealed class SpeechRequest
 {
     public string Model { get; init; } = "";
     public string Input { get; init; } = "";
-    public string Voice { get; init; } = "";
+    public string? Voice { get; init; }
     public string ResponseFormat { get; init; } = "wav";
-    public double Temperature { get; init; } = 0.9;
-    public int TopK { get; init; } = 50;
-    public double TopP { get; init; } = 1.0;
-    public double RepetitionPenalty { get; init; } = 1.05;
-    public int MaxTokens { get; init; }
+    public string? LangCode { get; init; }
+
+    /// <summary>A WAV file on the server's machine and its transcript: the voice to clone.</summary>
+    public string? RefAudio { get; init; }
+
+    public string? RefText { get; init; }
+    public double? Temperature { get; init; }
+    public int? TopK { get; init; }
+    public double? TopP { get; init; }
+    public double? RepetitionPenalty { get; init; }
+    public int? MaxTokens { get; init; }
 }
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(SpeechRequest))]
 sealed partial class SpeechJsonContext : JsonSerializerContext;

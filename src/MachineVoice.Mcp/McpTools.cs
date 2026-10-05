@@ -154,7 +154,12 @@ static class McpTools
             ["tts"] = new JsonObject
             {
                 ["engine"] = Name(snapshot.Settings.Tts.Engine, ProtocolJsonContext.Default.TtsEngineKind),
-                ["voice"] = snapshot.Settings.Tts.Engine == TtsEngineKind.Qwen ? snapshot.Settings.Tts.Qwen.Voice : null,
+                ["voice"] = snapshot.Settings.Tts.Engine switch
+                {
+                    TtsEngineKind.Qwen => snapshot.Settings.Tts.Qwen.Voice,
+                    TtsEngineKind.OmniVoice => snapshot.Settings.Tts.OmniVoice.Voice is { Length: > 0 } voice ? voice : "random",
+                    _ => null,
+                },
                 ["playbackRate"] = snapshot.Settings.Tts.PlaybackRate,
             },
         };

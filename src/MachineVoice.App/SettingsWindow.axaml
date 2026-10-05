@@ -76,7 +76,8 @@
       <TextBlock Classes="h" Text="Озвучка" />
       <StackPanel Orientation="Horizontal" Spacing="18">
         <RadioButton x:Name="EngineSystem" GroupName="engine" Content="Голос macOS" IsCheckedChanged="OnEngineChecked" />
-        <RadioButton x:Name="EngineQwen" GroupName="engine" Content="Qwen3-TTS (нейросеть, локально)" IsCheckedChanged="OnEngineChecked" />
+        <RadioButton x:Name="EngineQwen" GroupName="engine" Content="Qwen3-TTS" IsCheckedChanged="OnEngineChecked" />
+        <RadioButton x:Name="EngineOmni" GroupName="engine" Content="OmniVoice" IsCheckedChanged="OnEngineChecked" />
       </StackPanel>
       <Grid Classes="form" ColumnDefinitions="120,*">
         <TextBlock Text="Скорость" />
@@ -121,12 +122,51 @@
                        Increment="1"
                        FormatString="0" />
       </Grid>
+      <StackPanel x:Name="OmniFields" Spacing="10">
+        <Grid Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+          <TextBlock Text="Голос" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <ComboBox x:Name="OmniVoice" Width="220" SelectionChanged="OnOmniVoiceSelected" />
+            <Button x:Name="OmniPlay" Content="Прослушать" Click="OnPlayVoice" />
+            <Button x:Name="OmniDelete" Content="Удалить" Click="OnDeleteVoice" />
+          </StackPanel>
+          <TextBlock Grid.Row="1" Text="Сервер" />
+          <TextBox x:Name="OmniEndpoint" Grid.Row="1" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
+          <TextBlock Grid.Row="2" Text="Модель" />
+          <TextBox x:Name="OmniModel" Grid.Row="2" Grid.Column="1" PlaceholderText="mlx-community/OmniVoice-bfloat16" />
+          <TextBlock Grid.Row="3" Text="Выгрузить, мин" />
+          <NumericUpDown x:Name="OmniUnload"
+                         Grid.Row="3"
+                         Grid.Column="1"
+                         HorizontalAlignment="Left"
+                         Width="140"
+                         Minimum="0"
+                         Maximum="1440"
+                         Increment="1"
+                         FormatString="0" />
+        </Grid>
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button x:Name="NewVoiceButton" Content="Новый голос" Click="OnNewVoice" />
+              <TextBlock x:Name="NewVoiceStatus" Classes="hint" VerticalAlignment="Center" MaxWidth="400" />
+            </StackPanel>
+            <StackPanel x:Name="DraftPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
+              <TextBox x:Name="DraftName" Width="200" PlaceholderText="Название голоса" />
+              <Button Classes="accent" Content="Сохранить голос" Click="OnSaveDraft" />
+              <Button Content="Прослушать ещё раз" Click="OnPlayDraft" />
+            </StackPanel>
+            <TextBlock Classes="hint"
+                       Text="Готовых голосов у OmniVoice нет. «Новый голос» придумывает случайный и читает им короткую фразу. Понравился — сохраните, и OmniVoice будет копировать его в каждой фразе. Не понравился — нажмите ещё раз. Без сохранённого голоса каждая фраза звучит новым голосом." />
+          </StackPanel>
+        </Border>
+      </StackPanel>
       <StackPanel Orientation="Horizontal" Spacing="12">
         <Button Classes="accent" Content="Сохранить" Click="OnSaveTts" />
         <TextBlock x:Name="TtsStatus" Classes="hint" VerticalAlignment="Center" />
       </StackPanel>
       <TextBlock Classes="hint"
-                 Text="Скорость ускоряет или замедляет готовый звук без изменения высоты голоса. Темп голоса задаёт сам синтезатор macOS: паузы и ударения при этом остаются естественными, но он действует со следующего ответа. У Qwen3-TTS своего темпа нет. Qwen3-TTS работает через mlx-audio. Если по локальному адресу сервер не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после указанного простоя, чтобы освободить память (0 — не останавливать). Первая фраза после запуска ждёт загрузки модели. Если сервер недоступен, ответ дочитывает голос macOS." />
+                 Text="Скорость ускоряет или замедляет готовый звук без изменения высоты голоса. Темп голоса задаёт сам синтезатор macOS: паузы и ударения при этом остаются естественными, но он действует со следующего ответа. У нейросетей Qwen3-TTS и OmniVoice своего темпа нет. Обе работают локально через mlx-audio, в одном сервере. Если по локальному адресу сервер не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после указанного простоя, чтобы освободить память (0 — не останавливать). Первая фраза после запуска ждёт загрузки модели. Если сервер недоступен, ответ дочитывает голос macOS." />
     </StackPanel>
 
     <StackPanel Spacing="8">

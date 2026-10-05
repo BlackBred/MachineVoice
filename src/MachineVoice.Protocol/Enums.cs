@@ -80,6 +80,10 @@ public enum TtsEngineKind
     /// <summary>Qwen3-TTS served locally by mlx-audio.</summary>
     [JsonStringEnumMemberName("qwen")]
     Qwen,
+
+    /// <summary>OmniVoice served locally by mlx-audio; the voice is cloned from a saved sample.</summary>
+    [JsonStringEnumMemberName("omnivoice")]
+    OmniVoice,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<SourceConnectionStatus>))]

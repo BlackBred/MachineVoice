@@ -118,6 +118,36 @@ public sealed class GetMcpStatusCommand : ClientMessage
     public string Type { get; init; } = "getMcpStatus";
 }
 
+/// <summary>The saved OmniVoice voices, in <see cref="ResultMessage.Voices"/>.</summary>
+public sealed class ListVoicesCommand : ClientMessage
+{
+    public string Type { get; init; } = "listVoices";
+}
+
+/// <summary>
+/// Synthesizes a sample in a new random voice with the OmniVoice settings, starting the server and loading the
+/// model if needed: the first time this takes minutes. The draft comes in <see cref="ResultMessage.Voice"/>.
+/// </summary>
+public sealed class CreateVoiceCommand : ClientMessage
+{
+    public string Type { get; init; } = "createVoice";
+}
+
+/// <summary>Keeps a draft as a voice; the result lists the voices.</summary>
+public sealed class SaveVoiceCommand : ClientMessage
+{
+    public string Type { get; init; } = "saveVoice";
+    public string DraftId { get; init; } = "";
+    public string Name { get; init; } = "";
+}
+
+/// <summary>Deletes a saved voice; when OmniVoice used it, it falls back to a random voice.</summary>
+public sealed class DeleteVoiceCommand : ClientMessage
+{
+    public string Type { get; init; } = "deleteVoice";
+    public string VoiceId { get; init; } = "";
+}
+
 public abstract class ServerMessage
 {
     public int Version { get; init; } = ProtocolVersion.Current;
@@ -133,6 +163,11 @@ public sealed class ResultMessage : ServerMessage
     public SourceStatusDto? Source { get; init; }
     public SnapshotDto? Snapshot { get; init; }
     public McpStatusDto? Mcp { get; init; }
+    public List<VoiceDto>? Voices { get; init; }
+    public VoiceDto? Voice { get; init; }
+
+    /// <summary>Why the command failed, for a person to read; set when the cause is outside MachineVoice.</summary>
+    public string? Detail { get; init; }
 }
 
 public abstract class EventMessage : ServerMessage;

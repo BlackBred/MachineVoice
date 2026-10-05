@@ -29,6 +29,8 @@ sealed class AppController
     readonly List<PosixSignalRegistration> _signals = [];
 
     TtsSwitch? _tts;
+    SharedSpeechServer? _speechServer;
+    OmniVoiceSynthesizer? _omniVoice;
     MachineVoiceHost? _host;
     IControlClient? _client;
     TrayMenu? _tray;
@@ -64,9 +66,17 @@ sealed class AppController
 
         try
         {
+            // Qwen3-TTS and OmniVoice share one mlx_audio.server process.
+            var speechServer = _speechServer = new SharedSpeechServer(new MlxAudioServer(_options.RootDirectory, _log.Write));
+            var voices = new VoiceLibrary(Path.Combine(_options.RootDirectory, VoiceLibrary.DirectoryName), _log.Write);
+            var omniVoice = _omniVoice = new OmniVoiceSynthesizer(voices, speechServer.Lease(), log: _log.Write);
             _tts = new TtsSwitch(
                 AvSpeechWriter.Engine(new AvAudioPlayer(), new AvSpeechOptions { Log = _log.Write }),
-                () => QwenSynthesizer.Engine(new AvAudioPlayer(), new MlxAudioServer(_options.RootDirectory, _log.Write), log: _log.Write),
+                new Dictionary<TtsEngineKind, Func<ITtsEngine>>
+                {
+                    [TtsEngineKind.Qwen] = () => QwenSynthesizer.Engine(new AvAudioPlayer(), speechServer.Lease(), log: _log.Write),
+                    [TtsEngineKind.OmniVoice] = () => OmniVoiceSynthesizer.Engine(new AvAudioPlayer(), omniVoice, _log.Write),
+                },
                 _log.Write,
                 lastResort: new AvSpeechEngine(new AvSpeechOptions { Log = _log.Write }));
             _host = await MachineVoiceHost.StartAsync(new MachineVoiceOptions
@@ -76,6 +86,7 @@ sealed class AppController
                 Tts = _tts,
                 McpServerBinary = _options.McpServerBinary,
                 Log = _log.Write,
+                Voices = new VoiceStudio(voices, omniVoice),
             });
             _client = await _host.ConnectInProcessAsync();
             var snapshot = await _client.GetSnapshotAsync();
@@ -328,10 +339,15 @@ sealed class AppController
             _log.Write($"Shutdown failed: {ex}");
         }
 
+        // The OmniVoice engine disposes its synthesizer too, if it was ever selected.
         _tts?.Dispose();
+        _omniVoice?.Dispose();
+        _speechServer?.Dispose();
         _client = null;
         _host = null;
         _tts = null;
+        _omniVoice = null;
+        _speechServer = null;
     }
 
     static bool IsListening(string socketPath)

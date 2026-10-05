@@ -62,6 +62,18 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> GetMcpStatusAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new GetMcpStatusCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 
+    public Task<ResultMessage> ListVoicesAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new ListVoicesCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
+    public Task<ResultMessage> CreateVoiceAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new CreateVoiceCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
+    public Task<ResultMessage> SaveVoiceAsync(string draftId, string name, CancellationToken cancellationToken = default) =>
+        SendAsync(new SaveVoiceCommand { Version = ProtocolVersion.Current, Id = NewId(), DraftId = draftId, Name = name }, cancellationToken);
+
+    public Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default) =>
+        SendAsync(new DeleteVoiceCommand { Version = ProtocolVersion.Current, Id = NewId(), VoiceId = voiceId }, cancellationToken);
+
     public abstract IAsyncEnumerable<EventMessage> EventsAsync(CancellationToken cancellationToken = default);
 
     public abstract ValueTask DisposeAsync();

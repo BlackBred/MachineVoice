@@ -34,4 +34,10 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> ConnectMcpAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> DisconnectMcpAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> GetMcpStatusAsync(CancellationToken cancellationToken = default);
+    Task<ResultMessage> ListVoicesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Takes from seconds to minutes (the first one downloads the model).</summary>
+    Task<ResultMessage> CreateVoiceAsync(CancellationToken cancellationToken = default);
+    Task<ResultMessage> SaveVoiceAsync(string draftId, string name, CancellationToken cancellationToken = default);
+    Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default);
 }

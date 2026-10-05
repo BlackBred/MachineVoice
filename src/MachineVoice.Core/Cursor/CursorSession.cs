@@ -9,6 +9,7 @@ sealed class CursorTurn
     public string? Project { get; set; }
     public string? Topic { get; set; }
     public string? Text { get; set; }
+    public bool Answered { get; set; }
     public bool Completed { get; set; }
 }
 
@@ -23,9 +24,12 @@ readonly record struct HookApply(bool Changed, StoredSubmit? Ready)
 /// Folds Cursor hook events into one speech item per generation.
 /// beforeSubmitPrompt stores the prompt as the topic, afterAgentResponse stores the text,
 /// and stop with status completed queues the item once both are known.
+/// Cursor sometimes sends afterAgentResponse with empty text; such a turn is queued as <see cref="MissingText"/>.
 /// </summary>
 sealed class CursorSession
 {
+    public const string MissingText = "Ответ готов, но получить его текст из Cursor не удалось.";
+
     public Dictionary<string, CursorTurn> Turns { get; } = new(StringComparer.Ordinal);
 
     public static string? GenerationId(JsonElement payload)
@@ -66,7 +70,8 @@ sealed class CursorSession
                 var text = Limit(Field(payload, "text"), SubmitRules.MaxText);
                 if (text is not null)
                     answered.Text = text;
-                return answered.Completed && HasText(answered)
+                answered.Answered = true;
+                return IsReady(answered)
                     ? HookApply.ReadyNow(ToSubmit(generation, answered))
                     : HookApply.Stored;
             case "stop":
@@ -76,7 +81,7 @@ sealed class CursorSession
                 var stopped = Turn(generation);
                 Fill(stopped, payload);
                 stopped.Completed = true;
-                return HasText(stopped)
+                return IsReady(stopped)
                     ? HookApply.ReadyNow(ToSubmit(generation, stopped))
                     : HookApply.Stored;
             default:
@@ -89,7 +94,7 @@ sealed class CursorSession
         var ready = new List<StoredSubmit>();
         foreach (var (generation, turn) in Turns)
         {
-            if (turn.Completed && HasText(turn))
+            if (IsReady(turn))
                 ready.Add(ToSubmit(generation, turn));
         }
 
@@ -127,7 +132,7 @@ sealed class CursorSession
         ConversationId = turn.ConversationId,
         GenerationId = generationId,
         Topic = turn.Topic,
-        Text = turn.Text,
+        Text = HasText(turn) ? turn.Text : MissingText,
     };
 
     static string? Project(JsonElement payload)
@@ -174,6 +179,8 @@ sealed class CursorSession
         var trimmed = value.Trim();
         return trimmed.Length <= max ? trimmed : trimmed[..max];
     }
+
+    static bool IsReady(CursorTurn turn) => turn.Completed && (turn.Answered || HasText(turn));
 
     static bool HasText(CursorTurn turn) => !string.IsNullOrWhiteSpace(turn.Text);
 }

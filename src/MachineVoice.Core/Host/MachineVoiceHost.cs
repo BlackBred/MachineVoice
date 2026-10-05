@@ -19,6 +19,9 @@ public sealed class MachineVoiceOptions
     /// <see cref="RootDirectory"/>. Null in builds without it: the MCP status then reports it as unavailable.
     /// </summary>
     public string? McpServerBinary { get; init; }
+
+    /// <summary>The OmniVoice voices; without it the voice commands fail with invalid-state.</summary>
+    public IVoiceStudio? Voices { get; init; }
 }
 
 public sealed class MachineVoiceHost : IAsyncDisposable
@@ -67,7 +70,8 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             options.Tts,
             options.HttpHandler,
             options.McpServerBinary,
-            options.Log);
+            options.Log,
+            options.Voices);
         IngestServer? ingest = null;
         ControlServer? control = null;
         try

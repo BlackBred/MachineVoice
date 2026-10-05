@@ -57,6 +57,22 @@ public sealed class TtsSettingsDto
 
     public SystemVoiceSettingsDto SystemVoice { get; init; } = new();
     public QwenTtsSettingsDto Qwen { get; init; } = new();
+    public OmniVoiceTtsSettingsDto OmniVoice { get; init; } = new();
+}
+
+/// <summary>A model behind the OpenAI-compatible speech endpoint of mlx-audio (mlx_audio.server).</summary>
+public interface IMlxModelSettings
+{
+    /// <summary>Base URL; the request goes to {Endpoint}/audio/speech.</summary>
+    string Endpoint { get; }
+
+    string Model { get; }
+
+    /// <summary>
+    /// A server that MachineVoice started is stopped after this long without speech, which frees the model's
+    /// memory. 0 keeps it running.
+    /// </summary>
+    int UnloadAfterMinutes { get; }
 }
 
 /// <summary>The macOS voice (AVSpeechSynthesizer).</summary>
@@ -73,7 +89,7 @@ public sealed class SystemVoiceSettingsDto
 }
 
 /// <summary>Qwen3-TTS through the OpenAI-compatible speech endpoint of mlx-audio (mlx_audio.server).</summary>
-public sealed class QwenTtsSettingsDto
+public sealed class QwenTtsSettingsDto : IMlxModelSettings
 {
     public const string DefaultEndpoint = "http://127.0.0.1:8899/v1";
     public const string DefaultModel = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16";
@@ -90,12 +106,42 @@ public sealed class QwenTtsSettingsDto
 
     public string Model { get; init; } = DefaultModel;
     public string Voice { get; init; } = DefaultVoice;
-
-    /// <summary>
-    /// A server that MachineVoice started is stopped after this long without speech, which frees the model's
-    /// memory. 0 keeps it running.
-    /// </summary>
     public int UnloadAfterMinutes { get; init; } = DefaultUnloadAfterMinutes;
+}
+
+/// <summary>
+/// OmniVoice through mlx-audio. It has no built-in speakers: without a sample every request picks a new random
+/// voice, so a voice is a saved sample (see <see cref="VoiceDto"/>) that each request clones.
+/// </summary>
+public sealed class OmniVoiceTtsSettingsDto : IMlxModelSettings
+{
+    public const string DefaultModel = "mlx-community/OmniVoice-bfloat16";
+    public const string DefaultLanguage = "ru";
+
+    public string Endpoint { get; init; } = QwenTtsSettingsDto.DefaultEndpoint;
+    public string Model { get; init; } = DefaultModel;
+
+    /// <summary>Id of a saved voice; empty picks a random voice for every sentence.</summary>
+    public string Voice { get; init; } = "";
+
+    /// <summary>Language tag of the text, such as ru or en.</summary>
+    public string Language { get; init; } = DefaultLanguage;
+
+    public int UnloadAfterMinutes { get; init; } = QwenTtsSettingsDto.DefaultUnloadAfterMinutes;
+}
+
+/// <summary>A voice sample: a short clip and its transcript, which OmniVoice clones.</summary>
+public sealed class VoiceDto
+{
+    public string Id { get; init; } = "";
+
+    /// <summary>Empty for a draft that is not saved yet.</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>The WAV file of the sample, on the machine that runs MachineVoice.</summary>
+    public string AudioPath { get; init; } = "";
+
+    public string Text { get; init; } = "";
 }
 
 /// <summary>Optional LLM retelling through an OpenAI-compatible endpoint (Ollama works too).</summary>

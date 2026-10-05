@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using MachineVoice.Platform.MacOS;
 using MachineVoice.Protocol;
 
 namespace MachineVoice.App;
@@ -14,6 +15,11 @@ public partial class SettingsWindow : Window
     readonly Action<string> _log = _ => { };
     SummarySettingsDto _shownSummary = new();
     TtsSettingsDto _shownTts = new();
+    List<VoiceDto> _voices = [];
+    bool _voicesLoaded;
+    VoiceDto? _draft;
+    AvAudioPlayer? _preview;
+    bool _confirmDelete;
     bool _updating;
     bool _busy;
 
@@ -31,7 +37,16 @@ public partial class SettingsWindow : Window
         ShowSummary(state.Settings.Summary);
         ShowTts(state.Settings.Tts);
         Update(state);
-        Opened += async (_, _) => await RefreshStatusesAsync();
+        Opened += async (_, _) =>
+        {
+            await RefreshStatusesAsync();
+            await RefreshVoicesAsync();
+        };
+        Closed += (_, _) =>
+        {
+            _preview?.Dispose();
+            _preview = null;
+        };
     }
 
     public void Update(ControlState state)
@@ -205,10 +220,173 @@ public partial class SettingsWindow : Window
         });
     }
 
-    void OnEngineChecked(object? sender, RoutedEventArgs e)
+    void OnEngineChecked(object? sender, RoutedEventArgs e) => EnableEngineFields();
+
+    void EnableEngineFields()
     {
         QwenFields.IsEnabled = EngineQwen.IsChecked == true;
+        OmniFields.IsEnabled = EngineOmni.IsChecked == true;
         SystemFields.IsEnabled = EngineSystem.IsChecked == true;
+    }
+
+    async Task RefreshVoicesAsync()
+    {
+        try
+        {
+            var result = await _client.ListVoicesAsync();
+            if (result is { Ok: true, Voices: { } voices })
+            {
+                _voicesLoaded = true;
+                ShowVoices(voices, SelectedVoiceId());
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log($"Voice list failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>The settings may name a voice that is gone; it stays selectable so that saving keeps it.</summary>
+    void ShowVoices(List<VoiceDto> voices, string selected)
+    {
+        _voices = voices;
+        var items = new List<VoiceItem> { new("", "Случайный (новый в каждой фразе)") };
+        items.AddRange(voices.Select(voice => new VoiceItem(voice.Id, voice.Name)));
+        if (selected.Length > 0 && voices.All(voice => voice.Id != selected))
+            items.Add(new VoiceItem(selected, _voicesLoaded ? "Удалённый голос" : "…"));
+        OmniVoice.ItemsSource = items;
+        OmniVoice.SelectedItem = items.First(item => item.Id == selected);
+        UpdateVoiceButtons();
+    }
+
+    string SelectedVoiceId() => (OmniVoice.SelectedItem as VoiceItem)?.Id ?? _shownTts.OmniVoice.Voice;
+
+    VoiceDto? SelectedVoice() => _voices.Find(voice => voice.Id == SelectedVoiceId());
+
+    void OnOmniVoiceSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        _confirmDelete = false;
+        UpdateVoiceButtons();
+    }
+
+    void UpdateVoiceButtons()
+    {
+        var voice = SelectedVoice();
+        OmniPlay.IsEnabled = voice is not null;
+        OmniDelete.IsEnabled = voice is not null;
+        OmniDelete.Content = _confirmDelete ? "Точно удалить?" : "Удалить";
+    }
+
+    void OnPlayVoice(object? sender, RoutedEventArgs e) => Play(SelectedVoice());
+
+    void OnPlayDraft(object? sender, RoutedEventArgs e) => Play(_draft);
+
+    void Play(VoiceDto? voice)
+    {
+        if (voice is null)
+            return;
+        try
+        {
+            _preview ??= new AvAudioPlayer();
+            _preview.Play(File.ReadAllBytes(voice.AudioPath));
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            _log($"Voice preview failed: {ex.Message}");
+            NewVoiceStatus.Text = "Не удалось проиграть образец: " + ex.Message;
+        }
+    }
+
+    // The first click asks, the second deletes: a random voice cannot be made again.
+    async void OnDeleteVoice(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedVoice() is not { } voice)
+            return;
+        if (!_confirmDelete)
+        {
+            _confirmDelete = true;
+            UpdateVoiceButtons();
+            return;
+        }
+
+        _confirmDelete = false;
+        await RunAsync(async () =>
+        {
+            var result = await _client.DeleteVoiceAsync(voice.Id);
+            if (result is { Ok: true, Voices: { } voices })
+            {
+                ShowVoices(voices, "");
+                NewVoiceStatus.Text = $"Голос «{voice.Name}» удалён";
+                return;
+            }
+
+            NewVoiceStatus.Text = "Не удалось удалить: " + result.Error;
+        });
+    }
+
+    async void OnNewVoice(object? sender, RoutedEventArgs e)
+    {
+        NewVoiceButton.IsEnabled = false;
+        DraftPanel.IsVisible = false;
+        _draft = null;
+        NewVoiceStatus.Text = "Придумываю голос… В первый раз запускается сервер и загружается модель (около 2 ГБ), это может занять несколько минут.";
+        try
+        {
+            var result = await _client.CreateVoiceAsync();
+            if (result is { Ok: true, Voice: { } draft })
+            {
+                _draft = draft;
+                DraftName.Text = $"Голос {_voices.Count + 1}";
+                DraftPanel.IsVisible = true;
+                NewVoiceStatus.Text = "Вот так он звучит. Сохраните его или нажмите «Другой вариант».";
+                Play(draft);
+                return;
+            }
+
+            NewVoiceStatus.Text = result.Error == ProtocolErrors.Unavailable
+                ? "Сервер OmniVoice не ответил: " + result.Detail
+                : "Не удалось создать голос: " + result.Error;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log($"Voice draft failed: {ex}");
+            NewVoiceStatus.Text = "Не удалось создать голос: " + ex.Message;
+        }
+        finally
+        {
+            NewVoiceButton.IsEnabled = true;
+            NewVoiceButton.Content = _draft is null ? "Новый голос" : "Другой вариант";
+        }
+    }
+
+    /// <summary>Saving a voice also selects it and saves the engine settings, so it reads from the next response.</summary>
+    async void OnSaveDraft(object? sender, RoutedEventArgs e)
+    {
+        if (_draft is not { } draft)
+            return;
+        var name = DraftName.Text?.Trim() ?? "";
+        if (name.Length == 0)
+        {
+            NewVoiceStatus.Text = "Дайте голосу название.";
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            var result = await _client.SaveVoiceAsync(draft.Id, name);
+            if (result is not { Ok: true, Voices: { } voices, Voice: { } saved })
+            {
+                NewVoiceStatus.Text = "Не удалось сохранить голос: " + result.Error;
+                return;
+            }
+
+            _draft = null;
+            DraftPanel.IsVisible = false;
+            NewVoiceButton.Content = "Новый голос";
+            ShowVoices(voices, saved.Id);
+            NewVoiceStatus.Text = $"Голос «{saved.Name}» сохранён и выбран";
+            await SaveTtsAsync();
+        });
     }
 
     // Not through RunAsync: its Update would put the old rate back into the field before the core confirms.
@@ -235,26 +413,25 @@ public partial class SettingsWindow : Window
         }
     }
 
-    async void OnSaveTts(object? sender, RoutedEventArgs e)
+    async void OnSaveTts(object? sender, RoutedEventArgs e) => await RunAsync(SaveTtsAsync);
+
+    async Task SaveTtsAsync()
     {
         var tts = ReadTts();
         TtsStatus.Text = "";
-        await RunAsync(async () =>
+        var result = await _client.UpdateSettingsAsync(tts: tts);
+        if (result.Ok)
         {
-            var result = await _client.UpdateSettingsAsync(tts: tts);
-            if (result.Ok)
-            {
-                _shownTts = tts;
-                TtsStatus.Text = tts.Engine == TtsEngineKind.Qwen
-                    ? "Сохранено. Модель загружается в фоне, первая фраза может подождать."
-                    : "Сохранено";
-                return;
-            }
+            _shownTts = tts;
+            TtsStatus.Text = tts.Engine is TtsEngineKind.Qwen or TtsEngineKind.OmniVoice
+                ? "Сохранено. Модель загружается в фоне, первая фраза может подождать."
+                : "Сохранено";
+            return;
+        }
 
-            TtsStatus.Text = result.Error == ProtocolErrors.InvalidArgument
-                ? $"Проверьте поля: адрес http(s), модель и голос обязательны, простой от 0 до {QwenTtsSettingsDto.MaxUnloadAfterMinutes} мин."
-                : "Не удалось сохранить: " + result.Error;
-        });
+        TtsStatus.Text = result.Error == ProtocolErrors.InvalidArgument
+            ? $"Проверьте поля: адрес http(s), модель и голос обязательны, простой от 0 до {QwenTtsSettingsDto.MaxUnloadAfterMinutes} мин."
+            : "Не удалось сохранить: " + result.Error;
     }
 
     async Task RunAsync(Func<Task> action)
@@ -299,8 +476,8 @@ public partial class SettingsWindow : Window
     {
         EngineSystem.IsChecked = tts.Engine == TtsEngineKind.System;
         EngineQwen.IsChecked = tts.Engine == TtsEngineKind.Qwen;
-        QwenFields.IsEnabled = tts.Engine == TtsEngineKind.Qwen;
-        SystemFields.IsEnabled = tts.Engine == TtsEngineKind.System;
+        EngineOmni.IsChecked = tts.Engine == TtsEngineKind.OmniVoice;
+        EnableEngineFields();
         SystemRate.Value = (decimal)tts.SystemVoice.Rate;
 
         var voices = QwenTtsSettingsDto.Voices.ToList();
@@ -311,12 +488,18 @@ public partial class SettingsWindow : Window
         QwenEndpoint.Text = tts.Qwen.Endpoint;
         QwenModel.Text = tts.Qwen.Model;
         QwenUnload.Value = tts.Qwen.UnloadAfterMinutes;
+        ShowVoices(_voices, tts.OmniVoice.Voice);
+        OmniEndpoint.Text = tts.OmniVoice.Endpoint;
+        OmniModel.Text = tts.OmniVoice.Model;
+        OmniUnload.Value = tts.OmniVoice.UnloadAfterMinutes;
         _shownTts = ReadTts();
     }
 
     TtsSettingsDto ReadTts() => new()
     {
-        Engine = EngineQwen.IsChecked == true ? TtsEngineKind.Qwen : TtsEngineKind.System,
+        Engine = EngineOmni.IsChecked == true ? TtsEngineKind.OmniVoice
+            : EngineQwen.IsChecked == true ? TtsEngineKind.Qwen
+            : TtsEngineKind.System,
         PlaybackRate = _state.Settings.Tts.PlaybackRate,
         SystemVoice = new SystemVoiceSettingsDto
         {
@@ -329,6 +512,14 @@ public partial class SettingsWindow : Window
             Voice = QwenVoice.SelectedItem as string ?? QwenTtsSettingsDto.DefaultVoice,
             UnloadAfterMinutes = (int)(QwenUnload.Value ?? QwenTtsSettingsDto.DefaultUnloadAfterMinutes),
         },
+        OmniVoice = new OmniVoiceTtsSettingsDto
+        {
+            Endpoint = string.IsNullOrWhiteSpace(OmniEndpoint.Text) ? QwenTtsSettingsDto.DefaultEndpoint : OmniEndpoint.Text.Trim(),
+            Model = string.IsNullOrWhiteSpace(OmniModel.Text) ? OmniVoiceTtsSettingsDto.DefaultModel : OmniModel.Text.Trim(),
+            Voice = SelectedVoiceId(),
+            Language = _state.Settings.Tts.OmniVoice.Language,
+            UnloadAfterMinutes = (int)(OmniUnload.Value ?? QwenTtsSettingsDto.DefaultUnloadAfterMinutes),
+        },
     };
 
     // The playback rate is not compared: the field applies it at once.
@@ -338,7 +529,17 @@ public partial class SettingsWindow : Window
         && a.Qwen.Endpoint == b.Qwen.Endpoint
         && a.Qwen.Model == b.Qwen.Model
         && a.Qwen.Voice == b.Qwen.Voice
-        && a.Qwen.UnloadAfterMinutes == b.Qwen.UnloadAfterMinutes;
+        && a.Qwen.UnloadAfterMinutes == b.Qwen.UnloadAfterMinutes
+        && a.OmniVoice.Endpoint == b.OmniVoice.Endpoint
+        && a.OmniVoice.Model == b.OmniVoice.Model
+        && a.OmniVoice.Voice == b.OmniVoice.Voice
+        && a.OmniVoice.Language == b.OmniVoice.Language
+        && a.OmniVoice.UnloadAfterMinutes == b.OmniVoice.UnloadAfterMinutes;
+
+    sealed record VoiceItem(string Id, string Label)
+    {
+        public override string ToString() => Label;
+    }
 
     static bool Same(SummarySettingsDto a, SummarySettingsDto b) =>
         a.Enabled == b.Enabled

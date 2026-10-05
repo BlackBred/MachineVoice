@@ -5,7 +5,7 @@ namespace MachineVoice.Core;
 /// <summary>
 /// Routes speech to the engine chosen in the settings. A change applies from the next utterance; the one being
 /// read stays on its engine. When the neural engine fails, the system voice reads the rest of the utterance;
-/// when the system voice fails too, the last resort does. The Qwen engine is created the first time it is
+/// when the system voice fails too, the last resort does. A neural engine is created the first time it is
 /// selected. Owns all engines. After a fallback the times continue from where the failed engine stopped, and a
 /// seek reaches only the rest that the next engine reads.
 /// </summary>
@@ -16,18 +16,23 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
     readonly object _gate = new();
     readonly ITtsEngine _system;
     readonly ITtsEngine? _lastResort;
-    readonly Func<ITtsEngine> _createQwen;
+    readonly IReadOnlyDictionary<TtsEngineKind, Func<ITtsEngine>> _factories;
+    readonly Dictionary<TtsEngineKind, ITtsEngine> _neural = [];
     readonly Action<string>? _log;
     TtsSettingsDto _settings = new();
-    ITtsEngine? _qwen;
     Route? _route;
     bool _disposed;
 
-    public TtsSwitch(ITtsEngine system, Func<ITtsEngine> createQwen, Action<string>? log = null, ITtsEngine? lastResort = null)
+    /// <param name="neural">The engines other than the system voice, by the setting that selects them.</param>
+    public TtsSwitch(
+        ITtsEngine system,
+        IReadOnlyDictionary<TtsEngineKind, Func<ITtsEngine>> neural,
+        Action<string>? log = null,
+        ITtsEngine? lastResort = null)
     {
         _system = system;
         _lastResort = lastResort;
-        _createQwen = createQwen;
+        _factories = neural;
         _log = log;
         Subscribe(system);
         if (lastResort is not null)
@@ -38,26 +43,29 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
     public event EventHandler<TtsCompletedEventArgs>? Completed;
     public event EventHandler<TtsPositionEventArgs>? PositionChanged;
 
+    /// <summary>The selected engine gets the settings first: it takes the speech server before another one leaves it.</summary>
     public void Apply(TtsSettingsDto settings)
     {
-        ITtsEngine? qwen;
+        List<ITtsEngine> engines;
         lock (_gate)
         {
             if (_disposed)
                 return;
             _settings = settings;
-            if (_qwen is null && settings.Engine == TtsEngineKind.Qwen)
+            if (!_neural.ContainsKey(settings.Engine) && _factories.TryGetValue(settings.Engine, out var create))
             {
-                _qwen = _createQwen();
-                Subscribe(_qwen);
+                var created = create();
+                _neural[settings.Engine] = created;
+                Subscribe(created);
             }
 
-            qwen = _qwen;
+            engines = _neural.OrderBy(pair => pair.Key == settings.Engine ? 0 : 1).Select(pair => pair.Value).ToList();
         }
 
         (_system as IConfigurableTts)?.Apply(settings);
         (_lastResort as IConfigurableTts)?.Apply(settings);
-        (qwen as IConfigurableTts)?.Apply(settings);
+        foreach (var engine in engines)
+            (engine as IConfigurableTts)?.Apply(settings);
     }
 
     public void Speak(string utteranceId, string text)
@@ -67,7 +75,7 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            engine = _settings.Engine == TtsEngineKind.Qwen && _qwen is not null ? _qwen : _system;
+            engine = _neural.GetValueOrDefault(_settings.Engine) ?? _system;
             previous = _route?.Engine;
             _route = new Route(engine, utteranceId, 0, 0);
         }
@@ -108,17 +116,18 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
 
     public void Dispose()
     {
-        ITtsEngine? qwen;
+        List<ITtsEngine> neural;
         lock (_gate)
         {
             if (_disposed)
                 return;
             _disposed = true;
             _route = null;
-            qwen = _qwen;
+            neural = [.. _neural.Values];
         }
 
-        (qwen as IDisposable)?.Dispose();
+        foreach (var engine in neural)
+            (engine as IDisposable)?.Dispose();
         (_system as IDisposable)?.Dispose();
         (_lastResort as IDisposable)?.Dispose();
     }
@@ -187,7 +196,7 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
         {
             if (!Matches(engine, args.UtteranceId))
                 return;
-            next = engine == _system ? _lastResort : engine == _qwen ? _system : null;
+            next = engine == _system ? _lastResort : _neural.ContainsValue(engine) ? _system : null;
             var failed = _route!;
             _route = next is null ? null : new Route(next, args.UtteranceId, failed.WordOffset + args.WordOffset, failed.Position);
         }

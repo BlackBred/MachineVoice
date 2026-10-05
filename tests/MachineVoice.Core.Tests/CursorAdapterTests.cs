@@ -61,6 +61,28 @@ public class CursorAdapterTests
         await host.DisposeAsync();
     }
 
+    [Theory(Timeout = 20000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptyResponse_QueuesANoticeThatTheTextIsMissing(bool stopFirst)
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var host = await TestHost.StartAsync(root.Path, tts);
+        await IngestClient.SubmitHookAsync(host.IngestSocketPath, Prompt("gen-4", "тема"));
+        if (stopFirst)
+            await IngestClient.SubmitHookAsync(host.IngestSocketPath, Stop("gen-4", "completed"));
+        await IngestClient.SubmitHookAsync(host.IngestSocketPath, Response("gen-4", ""));
+        if (!stopFirst)
+            await IngestClient.SubmitHookAsync(host.IngestSocketPath, Stop("gen-4", "completed"));
+
+        Assert.Equal("Cursor, проект MachineVoice.\nОтвет готов, но получить его текст из Cursor не удалось.", tts.Text);
+        await using var client = await host.ConnectInProcessAsync();
+        var current = (await client.GetSnapshotAsync()).Snapshot!.Current!;
+        Assert.Equal("тема", current.Topic);
+        await host.DisposeAsync();
+    }
+
     [Fact(Timeout = 20000)]
     public async Task AbortedStop_DropsTheTurn()
     {

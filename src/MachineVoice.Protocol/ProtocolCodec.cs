@@ -26,6 +26,10 @@ public static class ProtocolCodec
         ConnectMcpCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ConnectMcpCommand),
         DisconnectMcpCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.DisconnectMcpCommand),
         GetMcpStatusCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.GetMcpStatusCommand),
+        ListVoicesCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.ListVoicesCommand),
+        CreateVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.CreateVoiceCommand),
+        SaveVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SaveVoiceCommand),
+        DeleteVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.DeleteVoiceCommand),
         _ => throw new ArgumentOutOfRangeException(nameof(message), message.GetType().Name, "Unknown command."),
     };
 
@@ -81,6 +85,10 @@ public static class ProtocolCodec
                 "connectMcp" => root.Deserialize(ProtocolJsonContext.Default.ConnectMcpCommand),
                 "disconnectMcp" => root.Deserialize(ProtocolJsonContext.Default.DisconnectMcpCommand),
                 "getMcpStatus" => root.Deserialize(ProtocolJsonContext.Default.GetMcpStatusCommand),
+                "listVoices" => root.Deserialize(ProtocolJsonContext.Default.ListVoicesCommand),
+                "createVoice" => root.Deserialize(ProtocolJsonContext.Default.CreateVoiceCommand),
+                "saveVoice" => root.Deserialize(ProtocolJsonContext.Default.SaveVoiceCommand),
+                "deleteVoice" => root.Deserialize(ProtocolJsonContext.Default.DeleteVoiceCommand),
                 _ => null,
             };
 

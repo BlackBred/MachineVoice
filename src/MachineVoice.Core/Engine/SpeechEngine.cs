@@ -17,6 +17,7 @@ sealed class SpeechEngine : IAsyncDisposable
     static readonly IQueuePolicy Fifo = new FifoQueuePolicy();
 
     readonly ITtsEngine _tts;
+    readonly IVoiceStudio? _voices;
     readonly HttpClient _http;
     readonly Action<string>? _log;
     readonly Channel<Work> _work = Channel.CreateUnbounded<Work>();
@@ -48,8 +49,10 @@ sealed class SpeechEngine : IAsyncDisposable
         ITtsEngine tts,
         HttpMessageHandler? httpHandler,
         string? mcpServerBinary,
-        Action<string>? log)
+        Action<string>? log,
+        IVoiceStudio? voices = null)
     {
+        _voices = voices;
         _inbox = new Inbox(root);
         _history = new HistoryStore(Path.Combine(root, AppLayout.HistoryFileName), log);
         _settingsStore = new SettingsStore(Path.Combine(root, AppLayout.SettingsFileName), log);
@@ -194,6 +197,9 @@ sealed class SpeechEngine : IAsyncDisposable
                 break;
             case HookWork hook:
                 hook.Ack.TrySetResult(AcceptHook(hook.Envelope, start: true));
+                break;
+            case CommandWork { Command: CreateVoiceCommand } create:
+                CreateVoice(create);
                 break;
             case CommandWork command:
                 command.Result.TrySetResult(Execute(command.Command));
@@ -502,12 +508,19 @@ sealed class SpeechEngine : IAsyncDisposable
         Advance();
     }
 
-    ResultMessage Execute(ClientMessage command)
+    static ResultMessage? Rejected(ClientMessage command)
     {
         if (string.IsNullOrWhiteSpace(command.Id))
             return Fail(command.Id, ProtocolErrors.InvalidArgument);
         if (command.Version != ProtocolVersion.Current)
             return Fail(command.Id, ProtocolErrors.UnsupportedVersion);
+        return null;
+    }
+
+    ResultMessage Execute(ClientMessage command)
+    {
+        if (Rejected(command) is { } rejected)
+            return rejected;
 
         return command switch
         {
@@ -529,8 +542,91 @@ sealed class SpeechEngine : IAsyncDisposable
             ConnectMcpCommand => ChangeMcp(command.Id, connect: true),
             DisconnectMcpCommand => ChangeMcp(command.Id, connect: false),
             GetMcpStatusCommand => new ResultMessage { Id = command.Id, Ok = true, Mcp = _mcp.Inspect() },
+            ListVoicesCommand => ListVoices(command.Id),
+            SaveVoiceCommand save => SaveVoice(command.Id, save.DraftId, save.Name),
+            DeleteVoiceCommand delete => DeleteVoice(command.Id, delete.VoiceId),
             _ => Fail(command.Id, ProtocolErrors.UnknownCommand),
         };
+    }
+
+    /// <summary>Synthesis takes seconds to minutes, so it runs off the loop and answers when it is done.</summary>
+    void CreateVoice(CommandWork work)
+    {
+        var command = work.Command;
+        if (Rejected(command) is { } rejected)
+        {
+            work.Result.TrySetResult(rejected);
+            return;
+        }
+
+        if (_voices is not { } voices)
+        {
+            work.Result.TrySetResult(Fail(command.Id, ProtocolErrors.InvalidState));
+            return;
+        }
+
+        var settings = _settings.Tts.OmniVoice;
+        var shutdown = _shutdown.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var draft = await voices.CreateDraftAsync(settings, shutdown).ConfigureAwait(false);
+                work.Result.TrySetResult(new ResultMessage { Id = command.Id, Ok = true, Voice = draft });
+            }
+            catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+            {
+                work.Result.TrySetCanceled(shutdown);
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"Voice draft failed: {ex.Message}");
+                work.Result.TrySetResult(new ResultMessage
+                {
+                    Id = command.Id,
+                    Ok = false,
+                    Error = ProtocolErrors.Unavailable,
+                    Detail = ex.Message,
+                });
+            }
+        }, CancellationToken.None);
+    }
+
+    ResultMessage ListVoices(string id) =>
+        _voices is null
+            ? Fail(id, ProtocolErrors.InvalidState)
+            : new ResultMessage { Id = id, Ok = true, Voices = [.. _voices.List()] };
+
+    ResultMessage SaveVoice(string id, string draftId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(draftId) || string.IsNullOrWhiteSpace(name) || name.Trim().Length > VoiceLibrary.MaxName)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (_voices is null)
+            return Fail(id, ProtocolErrors.InvalidState);
+        if (_voices.Save(draftId, name) is not { } saved)
+            return Fail(id, ProtocolErrors.NotFound);
+        return new ResultMessage { Id = id, Ok = true, Voice = saved, Voices = [.. _voices.List()] };
+    }
+
+    /// <summary>When OmniVoice used the voice, it goes back to a random one.</summary>
+    ResultMessage DeleteVoice(string id, string voiceId)
+    {
+        if (string.IsNullOrWhiteSpace(voiceId))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (_voices is null)
+            return Fail(id, ProtocolErrors.InvalidState);
+        if (!_voices.Delete(voiceId))
+            return Fail(id, ProtocolErrors.NotFound);
+
+        if (_settings.Tts.OmniVoice.Voice == voiceId)
+        {
+            _settings = Settings(_settings.Sources, _settings.Summary, TtsRules.WithOmniVoice(_settings.Tts, ""));
+            ApplyTts();
+            PersistSettings();
+            Publish(new SettingsChangedEvent { Settings = CopySettings() });
+        }
+
+        return new ResultMessage { Id = id, Ok = true, Voices = [.. _voices.List()] };
     }
 
     ResultMessage Pause(string id)

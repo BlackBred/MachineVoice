@@ -409,11 +409,11 @@ public class TtsSwitchTests
         var system = new ManualTtsEngine();
         var qwen = new ManualNeuralEngine();
         var created = 0;
-        using var tts = new TtsSwitch(system, () =>
+        using var tts = new TtsSwitch(system, Neural(() =>
         {
             created++;
             return qwen;
-        });
+        }));
 
         tts.Apply(new TtsSettingsDto());
         Assert.Equal(0, created);
@@ -438,7 +438,7 @@ public class TtsSwitchTests
     {
         var system = new ManualTtsEngine();
         var qwen = new ManualNeuralEngine();
-        using var tts = new TtsSwitch(system, () => qwen);
+        using var tts = new TtsSwitch(system, Neural(() => qwen));
         var recorder = new TtsRecorder(tts);
         tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
 
@@ -464,7 +464,7 @@ public class TtsSwitchTests
         var system = new ManualNeuralEngine();
         var qwen = new ManualNeuralEngine();
         var lastResort = new ManualTtsEngine();
-        using var tts = new TtsSwitch(system, () => qwen, lastResort: lastResort);
+        using var tts = new TtsSwitch(system, Neural(() => qwen), lastResort: lastResort);
         var recorder = new TtsRecorder(tts);
         tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen, PlaybackRate = 1.5 });
         Assert.Equal(1.5, system.Applied!.PlaybackRate);
@@ -485,7 +485,7 @@ public class TtsSwitchTests
     public void SystemVoiceFailure_WithoutALastResort_Completes()
     {
         var system = new ManualNeuralEngine();
-        using var tts = new TtsSwitch(system, () => new ManualNeuralEngine());
+        using var tts = new TtsSwitch(system, Neural(() => new ManualNeuralEngine()));
         var recorder = new TtsRecorder(tts);
         tts.Apply(new TtsSettingsDto());
 
@@ -500,7 +500,7 @@ public class TtsSwitchTests
     {
         var system = new ManualTtsEngine();
         var qwen = new ManualNeuralEngine();
-        using var tts = new TtsSwitch(system, () => qwen);
+        using var tts = new TtsSwitch(system, Neural(() => qwen));
         var positions = new List<TtsPositionEventArgs>();
         tts.PositionChanged += (_, args) => positions.Add(args);
         tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
@@ -524,7 +524,7 @@ public class TtsSwitchTests
     {
         var system = new ManualTtsEngine();
         var qwen = new ManualNeuralEngine();
-        using var tts = new TtsSwitch(system, () => qwen);
+        using var tts = new TtsSwitch(system, Neural(() => qwen));
         var recorder = new TtsRecorder(tts);
         tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
 
@@ -538,6 +538,37 @@ public class TtsSwitchTests
         Assert.Empty(recorder.Words);
         Assert.False(recorder.Completed.Task.IsCompleted);
     }
+
+    [Fact]
+    public void EachNeuralEngine_IsCreatedWhenSelected_AndFallsBackToTheSystemVoice()
+    {
+        var system = new ManualTtsEngine();
+        var qwen = new ManualNeuralEngine();
+        var omni = new ManualNeuralEngine();
+        using var tts = new TtsSwitch(system, new Dictionary<TtsEngineKind, Func<ITtsEngine>>
+        {
+            [TtsEngineKind.Qwen] = () => qwen,
+            [TtsEngineKind.OmniVoice] = () => omni,
+        });
+        var recorder = new TtsRecorder(tts);
+
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.OmniVoice });
+        Assert.Null(qwen.Applied);
+        tts.Speak("a", "Раз. Два.");
+        Assert.Equal("a", omni.UtteranceId);
+        omni.Fail("Два.", wordOffset: 1);
+        Assert.Equal("Два.", system.Text);
+        system.Complete();
+        Assert.True(recorder.Completed.Task.IsCompleted);
+
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
+        Assert.Equal(TtsEngineKind.Qwen, omni.Applied!.Engine);
+        tts.Speak("b", "три");
+        Assert.Equal("b", qwen.UtteranceId);
+        Assert.Null(omni.UtteranceId);
+    }
+
+    static Dictionary<TtsEngineKind, Func<ITtsEngine>> Neural(Func<ITtsEngine> qwen) => new() { [TtsEngineKind.Qwen] = qwen };
 
     sealed class ManualNeuralEngine : IFallibleTtsEngine, ISeekableTtsEngine, IConfigurableTts
     {
