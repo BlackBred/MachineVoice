@@ -141,10 +141,11 @@ sealed class TrayMenu : IDisposable
         var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(144, 144));
         using (var context = bitmap.CreateDrawingContext())
         {
-            var speaker = StreamGeometry.Parse("M2,6.5 L5,6.5 L9,3 L9,15 L5,11.5 L2,11.5 Z");
-            var waves = StreamGeometry.Parse("M11.5,6.5 Q13,9 11.5,11.5 M13.5,4.5 Q16.5,9 13.5,13.5");
-            context.DrawGeometry(Brushes.Black, null, speaker);
-            context.DrawGeometry(null, new Pen(Brushes.Black, 1.4, lineCap: PenLineCap.Round), waves);
+            // Mirrors Assets/tray-icon-bars.svg; Assets/tray-icon-sine.svg is the alternative design.
+            var ring = new EllipseGeometry(new Rect(1.4, 1.4, 15.2, 15.2));
+            var bars = StreamGeometry.Parse("M5,7.7 V10.3 M7,6 V12 M9,4.4 V13.6 M11,6.4 V11.6 M13,7.5 V10.5");
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.4), ring);
+            context.DrawGeometry(null, new Pen(Brushes.Black, 1.3, lineCap: PenLineCap.Round), bars);
         }
 
         return bitmap;
