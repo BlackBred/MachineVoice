@@ -51,6 +51,16 @@
                  Text="«Авто» читает каждый ответ сразу. «По подтверждению» сначала показывает тост с кнопкой «Слушать». «Тихий» только сохраняет ответы в историю." />
     </StackPanel>
 
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Порядок" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="OrderLifo" GroupName="order" Content="Сначала новые (стек)" IsCheckedChanged="OnOrderChecked" />
+        <RadioButton x:Name="OrderFifo" GroupName="order" Content="По порядку (очередь)" IsCheckedChanged="OnOrderChecked" />
+      </StackPanel>
+      <TextBlock Classes="hint"
+                 Text="Звучащий ответ всегда дочитывается. «Сначала новые» ставит пришедший ответ следующим, а в режиме «По подтверждению» он сразу заменяет тост; прежний ответ ждёт за ним. Переключение сразу переставляет ответы, которые уже ждут." />
+    </StackPanel>
+
     <StackPanel Spacing="10">
       <TextBlock Classes="h" Text="Озвучка" />
       <StackPanel Orientation="Horizontal" Spacing="18">

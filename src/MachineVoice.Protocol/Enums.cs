@@ -15,6 +15,19 @@ public enum PlaybackMode
     Silent,
 }
 
+/// <summary>Which waiting response is read next. The one being read always finishes.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<QueueOrder>))]
+public enum QueueOrder
+{
+    /// <summary>Newest first; in the confirm mode a new response takes the toast.</summary>
+    [JsonStringEnumMemberName("lifo")]
+    Lifo,
+
+    /// <summary>In the order of arrival.</summary>
+    [JsonStringEnumMemberName("fifo")]
+    Fifo,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<PlayerState>))]
 public enum PlayerState
 {

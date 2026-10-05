@@ -34,6 +34,7 @@ public sealed class SourceSettingDto
 public sealed class SettingsDto
 {
     public PlaybackMode Mode { get; init; } = PlaybackMode.Auto;
+    public QueueOrder Order { get; init; } = QueueOrder.Lifo;
     public List<SourceSettingDto> Sources { get; init; } = [];
     public SummarySettingsDto Summary { get; init; } = new();
     public TtsSettingsDto Tts { get; init; } = new();

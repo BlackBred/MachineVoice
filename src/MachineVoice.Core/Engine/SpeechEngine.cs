@@ -13,8 +13,10 @@ sealed class SpeechEngine : IAsyncDisposable
     readonly CursorMcp _mcp;
     readonly CursorTurnStore _turnStore;
     readonly CursorSession _session = new();
+    static readonly IQueuePolicy Lifo = new LifoQueuePolicy();
+    static readonly IQueuePolicy Fifo = new FifoQueuePolicy();
+
     readonly ITtsEngine _tts;
-    readonly IQueuePolicy _policy;
     readonly HttpClient _http;
     readonly Action<string>? _log;
     readonly Channel<Work> _work = Channel.CreateUnbounded<Work>();
@@ -26,6 +28,7 @@ sealed class SpeechEngine : IAsyncDisposable
 
     SettingsDto _settings = new();
     PlaybackMode _mode = PlaybackMode.Auto;
+    QueueOrder _order = QueueOrder.Lifo;
     PlayerState _player = PlayerState.Idle;
     SpeechItem? _current;
     string? _confirmationItemId;
@@ -37,7 +40,6 @@ sealed class SpeechEngine : IAsyncDisposable
         string root,
         string cursorDirectory,
         ITtsEngine tts,
-        IQueuePolicy policy,
         HttpMessageHandler? httpHandler,
         string? mcpServerBinary,
         Action<string>? log)
@@ -54,7 +56,6 @@ sealed class SpeechEngine : IAsyncDisposable
             log);
         _turnStore = new CursorTurnStore(Path.Combine(root, AppLayout.CursorTurnsFileName), log);
         _tts = tts;
-        _policy = policy;
         _http = httpHandler is null ? new HttpClient() : new HttpClient(httpHandler, disposeHandler: false);
         _http.Timeout = Timeout.InfiniteTimeSpan;
         _log = log;
@@ -70,6 +71,7 @@ sealed class SpeechEngine : IAsyncDisposable
 
         _settings = _settingsStore.Load();
         _mode = _settings.Mode;
+        _order = _settings.Order;
         _settings = Settings(_settings.Sources, _settings.Summary ?? new SummarySettingsDto(), TtsRules.Loaded(_settings.Tts));
         ApplyTts();
         foreach (var (generation, turn) in _turnStore.Load())
@@ -296,7 +298,7 @@ sealed class SpeechEngine : IAsyncDisposable
         Prepare(item);
         Remember(item);
         _hold = false;
-        _policy.Enqueue(_queue, item);
+        Policy.Enqueue(_queue, item);
         PublishQueue();
         if (start)
             Advance();
@@ -430,8 +432,10 @@ sealed class SpeechEngine : IAsyncDisposable
         var item = ToItem(canonical, path);
         Prepare(item);
         Remember(item);
-        _policy.Enqueue(_queue, item);
+        Policy.Enqueue(_queue, item);
     }
+
+    IQueuePolicy Policy => _order == QueueOrder.Lifo ? Lifo : Fifo;
 
     /// <summary>
     /// Runs the text pipeline. Rules finish synchronously; with an LLM step the result arrives later as
@@ -676,7 +680,9 @@ sealed class SpeechEngine : IAsyncDisposable
 
     ResultMessage UpdateSettings(string id, UpdateSettingsCommand update)
     {
-        if (update.Mode is null && update.Summary is null && update.Tts is null)
+        if (update.Mode is null && update.Order is null && update.Summary is null && update.Tts is null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (update.Order is { } requested && !Enum.IsDefined(requested))
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Summary is not null && SummaryRules.Validate(update.Summary) is not null)
             return Fail(id, ProtocolErrors.InvalidArgument);
@@ -687,6 +693,13 @@ sealed class SpeechEngine : IAsyncDisposable
         if (update.Mode is { } mode && mode != _mode)
         {
             SwitchMode(mode);
+            changed = true;
+        }
+
+        if (update.Order is { } order && order != _order)
+        {
+            _order = order;
+            Reorder();
             changed = true;
         }
 
@@ -710,6 +723,16 @@ sealed class SpeechEngine : IAsyncDisposable
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
         Advance();
         return Ok(id);
+    }
+
+    // Every item went in under the previous order, so the reverse is the new one.
+    void Reorder()
+    {
+        if (_queue.Count < 2)
+            return;
+
+        _queue.Reverse();
+        PublishQueue();
     }
 
     void SwitchMode(PlaybackMode mode)
@@ -840,7 +863,7 @@ sealed class SpeechEngine : IAsyncDisposable
 
     void Advance()
     {
-        if (_player != PlayerState.Idle || _hold || _confirmationItemId is not null || _queue.Count == 0)
+        if (_player != PlayerState.Idle || _hold || _queue.Count == 0)
             return;
         if (_mode == PlaybackMode.Silent || _queue[0].Speech is null)
             return;
@@ -848,6 +871,11 @@ sealed class SpeechEngine : IAsyncDisposable
         if (_mode == PlaybackMode.Confirm)
         {
             var head = _queue[0];
+            if (_confirmationItemId == head.Id)
+                return;
+
+            // In the LIFO order a newer response takes the toast; the one shown before waits right behind it.
+            ClearConfirmation();
             _confirmationItemId = head.Id;
             Publish(new ConfirmationRequestedEvent { Item = ToDto(head) });
             return;
@@ -938,6 +966,7 @@ sealed class SpeechEngine : IAsyncDisposable
     SettingsDto Settings(IEnumerable<SourceSettingDto> sources, SummarySettingsDto summary, TtsSettingsDto tts) => new()
     {
         Mode = _mode,
+        Order = _order,
         Sources = sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = summary,
         Tts = tts,
@@ -981,6 +1010,7 @@ sealed class SpeechEngine : IAsyncDisposable
     SettingsDto CopySettings() => new()
     {
         Mode = _settings.Mode,
+        Order = _settings.Order,
         Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = _settings.Summary,
         Tts = _settings.Tts,

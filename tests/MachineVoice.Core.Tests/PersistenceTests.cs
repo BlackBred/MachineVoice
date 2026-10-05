@@ -60,7 +60,8 @@ public class PersistenceTests
         var tts = new ManualTtsEngine();
         var host = await TestHost.StartAsync(root.Path, tts);
         await using var client = await host.ConnectInProcessAsync();
-        var updated = await client.UpdateSettingsAsync(PlaybackMode.Silent);
+        Assert.Equal(QueueOrder.Lifo, (await client.GetSettingsAsync()).Settings!.Order);
+        var updated = await client.UpdateSettingsAsync(PlaybackMode.Silent, order: QueueOrder.Fifo);
         Assert.True(updated.Ok);
         var connected = await client.ConnectSourceAsync("cursor");
         Assert.Equal(SourceConnectionStatus.Connected, connected.Source!.Status);
@@ -71,6 +72,7 @@ public class PersistenceTests
         await using var again = await restarted.ConnectInProcessAsync();
         var settings = await again.GetSettingsAsync();
         Assert.Equal(PlaybackMode.Silent, settings.Settings!.Mode);
+        Assert.Equal(QueueOrder.Fifo, settings.Settings.Order);
         Assert.Contains(settings.Settings.Sources, source => source.Name == "cursor" && source.Enabled);
         var status = await again.GetSourceStatusAsync("cursor");
         Assert.Equal(SourceConnectionStatus.Connected, status.Source!.Status);
@@ -99,6 +101,7 @@ public class PersistenceTests
         var host = await TestHost.StartAsync(root.Path, tts);
         await using var client = await host.ConnectInProcessAsync();
         var log = EventLog.Pump(client);
+        Assert.True((await client.UpdateSettingsAsync(order: QueueOrder.Fifo)).Ok);
 
         var first = await IngestClient.SubmitAsync(host.IngestSocketPath, Draft("a"));
         var second = await IngestClient.SubmitAsync(host.IngestSocketPath, Draft("b"));

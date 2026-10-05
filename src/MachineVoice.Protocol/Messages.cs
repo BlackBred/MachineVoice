@@ -66,6 +66,10 @@ public sealed class UpdateSettingsCommand : ClientMessage
 {
     public string Type { get; init; } = "updateSettings";
     public PlaybackMode? Mode { get; init; }
+
+    /// <summary>Reorders the waiting responses at once; the one being read finishes.</summary>
+    public QueueOrder? Order { get; init; }
+
     public SummarySettingsDto? Summary { get; init; }
     public TtsSettingsDto? Tts { get; init; }
 }

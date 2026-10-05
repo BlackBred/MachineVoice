@@ -1,7 +1,7 @@
 namespace MachineVoice.Core;
 
 /// <summary>
-/// Decides where a new item sits in the queue. Playback always takes the front.
+/// Decides where a new item sits in the queue. Playback and the confirmation toast always take the front.
 /// </summary>
 public interface IQueuePolicy
 {

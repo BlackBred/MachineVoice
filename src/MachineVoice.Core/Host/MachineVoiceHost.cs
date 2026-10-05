@@ -6,7 +6,6 @@ public sealed class MachineVoiceOptions
 {
     public required string RootDirectory { get; init; }
     public required ITtsEngine Tts { get; init; }
-    public IQueuePolicy? QueuePolicy { get; init; }
     public Action<string>? Log { get; init; }
 
     /// <summary>Directory that contains hooks.json. Defaults to ~/.cursor.</summary>
@@ -66,7 +65,6 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             options.RootDirectory,
             cursorDirectory,
             options.Tts,
-            options.QueuePolicy ?? new FifoQueuePolicy(),
             options.HttpHandler,
             options.McpServerBinary,
             options.Log);

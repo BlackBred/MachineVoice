@@ -40,6 +40,8 @@ public partial class SettingsWindow : Window
         ModeAuto.IsChecked = state.Mode == PlaybackMode.Auto;
         ModeConfirm.IsChecked = state.Mode == PlaybackMode.Confirm;
         ModeSilent.IsChecked = state.Mode == PlaybackMode.Silent;
+        OrderLifo.IsChecked = state.Settings.Order == QueueOrder.Lifo;
+        OrderFifo.IsChecked = state.Settings.Order == QueueOrder.Fifo;
         var rate = (decimal)state.Settings.Tts.PlaybackRate;
         if (PlaybackRate.Value != rate)
             PlaybackRate.Value = rate;
@@ -156,6 +158,16 @@ public partial class SettingsWindow : Window
             : PlaybackMode.Auto;
         if (mode != _state.Mode)
             _ = RunAsync(async () => await _client.SetModeAsync(mode));
+    }
+
+    void OnOrderChecked(object? sender, RoutedEventArgs e)
+    {
+        if (_updating || sender is not RadioButton { IsChecked: true } button)
+            return;
+
+        var order = button == OrderFifo ? QueueOrder.Fifo : QueueOrder.Lifo;
+        if (order != _state.Settings.Order)
+            _ = RunAsync(async () => await _client.UpdateSettingsAsync(order: order));
     }
 
     async void OnSaveSummary(object? sender, RoutedEventArgs e)
