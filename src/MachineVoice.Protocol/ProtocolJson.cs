@@ -42,6 +42,9 @@ namespace MachineVoice.Protocol;
 [JsonSerializable(typeof(HistoryEntryDto))]
 [JsonSerializable(typeof(SourceSettingDto))]
 [JsonSerializable(typeof(SummarySettingsDto))]
+[JsonSerializable(typeof(TtsSettingsDto))]
+[JsonSerializable(typeof(QwenTtsSettingsDto))]
+[JsonSerializable(typeof(TtsEngineKind))]
 [JsonSerializable(typeof(SourceStatusDto))]
 [JsonSerializable(typeof(McpStatusDto))]
 public partial class ProtocolJsonContext : JsonSerializerContext;

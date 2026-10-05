@@ -60,6 +60,7 @@ public sealed class UpdateSettingsCommand : ClientMessage
     public string Type { get; init; } = "updateSettings";
     public PlaybackMode? Mode { get; init; }
     public SummarySettingsDto? Summary { get; init; }
+    public TtsSettingsDto? Tts { get; init; }
 }
 
 public sealed class ConnectSourceCommand : ClientMessage

@@ -42,6 +42,18 @@ static partial class ObjC
     public static partial IntPtr Send(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial IntPtr Send(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial IntPtr Send(IntPtr receiver, IntPtr selector, IntPtr arg1, nuint arg2);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial double SendDouble(IntPtr receiver, IntPtr selector);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
+    public static partial void SendVoid(IntPtr receiver, IntPtr selector);
+
+    [LibraryImport(Lib, EntryPoint = "objc_msgSend")]
     public static partial void SendVoid(IntPtr receiver, IntPtr selector, IntPtr arg);
 
     [LibraryImport(Lib, EntryPoint = "objc_msgSend")]

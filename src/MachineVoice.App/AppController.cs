@@ -27,7 +27,7 @@ sealed class AppController
     readonly DispatcherTimer _hideTimer;
     readonly List<PosixSignalRegistration> _signals = [];
 
-    AvSpeechEngine? _tts;
+    TtsSwitch? _tts;
     MachineVoiceHost? _host;
     IControlClient? _client;
     TrayMenu? _tray;
@@ -63,7 +63,10 @@ sealed class AppController
 
         try
         {
-            _tts = new AvSpeechEngine(new AvSpeechOptions { Log = _log.Write });
+            _tts = new TtsSwitch(
+                new AvSpeechEngine(new AvSpeechOptions { Log = _log.Write }),
+                () => new NeuralTtsEngine(new AvAudioPlayer(), new MlxAudioServer(_options.RootDirectory, _log.Write), log: _log.Write),
+                _log.Write);
             _host = await MachineVoiceHost.StartAsync(new MachineVoiceOptions
             {
                 RootDirectory = _options.RootDirectory,

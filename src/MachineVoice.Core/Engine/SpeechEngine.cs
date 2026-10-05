@@ -70,8 +70,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
         _settings = _settingsStore.Load();
         _mode = _settings.Mode;
-        if (_settings.Summary is null)
-            _settings = Settings(_settings.Sources, new SummarySettingsDto());
+        _settings = Settings(_settings.Sources, _settings.Summary ?? new SummarySettingsDto(), TtsRules.Loaded(_settings.Tts));
+        ApplyTts();
         foreach (var (generation, turn) in _turnStore.Load())
             _session.Turns[generation] = turn;
         _inbox.DeleteTemps();
@@ -640,9 +640,11 @@ sealed class SpeechEngine : IAsyncDisposable
 
     ResultMessage UpdateSettings(string id, UpdateSettingsCommand update)
     {
-        if (update.Mode is null && update.Summary is null)
+        if (update.Mode is null && update.Summary is null && update.Tts is null)
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Summary is not null && SummaryRules.Validate(update.Summary) is not null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (update.Tts is not null && TtsRules.Validate(update.Tts) is not null)
             return Fail(id, ProtocolErrors.InvalidArgument);
 
         var changed = false;
@@ -654,7 +656,14 @@ sealed class SpeechEngine : IAsyncDisposable
 
         if (update.Summary is not null)
         {
-            _settings = Settings(_settings.Sources, SummaryRules.Canonical(update.Summary));
+            _settings = Settings(_settings.Sources, SummaryRules.Canonical(update.Summary), _settings.Tts);
+            changed = true;
+        }
+
+        if (update.Tts is not null)
+        {
+            _settings = Settings(_settings.Sources, _settings.Summary, TtsRules.Canonical(update.Tts));
+            ApplyTts();
             changed = true;
         }
 
@@ -748,7 +757,7 @@ sealed class SpeechEngine : IAsyncDisposable
             .ToList();
         sources.Add(new SourceSettingDto { Name = source, Enabled = enabled });
         sources.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
-        _settings = Settings(sources, _settings.Summary);
+        _settings = Settings(sources, _settings.Summary, _settings.Tts);
         _settingsStore.Save(_settings);
 
         Publish(new SettingsChangedEvent { Settings = CopySettings() });
@@ -872,15 +881,30 @@ sealed class SpeechEngine : IAsyncDisposable
 
     void PersistSettings()
     {
-        _settings = Settings(_settings.Sources, _settings.Summary);
+        _settings = Settings(_settings.Sources, _settings.Summary, _settings.Tts);
         _settingsStore.Save(_settings);
     }
 
-    SettingsDto Settings(IEnumerable<SourceSettingDto> sources, SummarySettingsDto summary) => new()
+    void ApplyTts()
+    {
+        if (_tts is not IConfigurableTts configurable)
+            return;
+        try
+        {
+            configurable.Apply(_settings.Tts);
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"Applying TTS settings failed: {ex.Message}");
+        }
+    }
+
+    SettingsDto Settings(IEnumerable<SourceSettingDto> sources, SummarySettingsDto summary, TtsSettingsDto tts) => new()
     {
         Mode = _mode,
         Sources = sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = summary,
+        Tts = tts,
     };
 
     void Remember(SpeechItem item)
@@ -923,6 +947,7 @@ sealed class SpeechEngine : IAsyncDisposable
         Mode = _settings.Mode,
         Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = _settings.Summary,
+        Tts = _settings.Tts,
     };
 
     List<SourceStatusDto> SourceStatuses() =>

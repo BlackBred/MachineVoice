@@ -41,6 +41,18 @@ public enum SpeechOutcome
     Stopped,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<TtsEngineKind>))]
+public enum TtsEngineKind
+{
+    /// <summary>AVSpeechSynthesizer with the system voices.</summary>
+    [JsonStringEnumMemberName("system")]
+    System,
+
+    /// <summary>Qwen3-TTS served locally by mlx-audio.</summary>
+    [JsonStringEnumMemberName("qwen")]
+    Qwen,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<SourceConnectionStatus>))]
 public enum SourceConnectionStatus
 {

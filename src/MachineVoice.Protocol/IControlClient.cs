@@ -17,7 +17,11 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> OpenChatAsync(string itemId, CancellationToken cancellationToken = default);
     Task<ResultMessage> GetSettingsAsync(CancellationToken cancellationToken = default);
     /// <summary>Changes only the parts that are not null.</summary>
-    Task<ResultMessage> UpdateSettingsAsync(PlaybackMode? mode = null, SummarySettingsDto? summary = null, CancellationToken cancellationToken = default);
+    Task<ResultMessage> UpdateSettingsAsync(
+        PlaybackMode? mode = null,
+        SummarySettingsDto? summary = null,
+        TtsSettingsDto? tts = null,
+        CancellationToken cancellationToken = default);
     Task<ResultMessage> ConnectSourceAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> DisconnectSourceAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> GetSourceStatusAsync(string source, CancellationToken cancellationToken = default);

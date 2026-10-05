@@ -3,6 +3,7 @@
         x:Class="MachineVoice.App.SettingsWindow"
         Title="MachineVoice — настройки"
         Width="600"
+        MaxHeight="860"
         SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterScreen">
@@ -36,6 +37,7 @@
     </Style>
   </Window.Styles>
 
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
   <StackPanel Margin="24" Spacing="22">
 
     <StackPanel Spacing="8">
@@ -47,6 +49,38 @@
       </StackPanel>
       <TextBlock Classes="hint"
                  Text="«Авто» читает каждый ответ сразу. «По подтверждению» сначала показывает тост с кнопкой «Слушать». «Тихий» только сохраняет ответы в историю." />
+    </StackPanel>
+
+    <StackPanel Spacing="10">
+      <TextBlock Classes="h" Text="Озвучка" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="EngineSystem" GroupName="engine" Content="Голос macOS" IsCheckedChanged="OnEngineChecked" />
+        <RadioButton x:Name="EngineQwen" GroupName="engine" Content="Qwen3-TTS (нейросеть, локально)" IsCheckedChanged="OnEngineChecked" />
+      </StackPanel>
+      <Grid x:Name="QwenFields" Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="Голос" />
+        <ComboBox x:Name="QwenVoice" Grid.Column="1" Width="200" HorizontalAlignment="Left" />
+        <TextBlock Grid.Row="1" Text="Сервер" />
+        <TextBox x:Name="QwenEndpoint" Grid.Row="1" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
+        <TextBlock Grid.Row="2" Text="Модель" />
+        <TextBox x:Name="QwenModel" Grid.Row="2" Grid.Column="1" PlaceholderText="mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16" />
+        <TextBlock Grid.Row="3" Text="Выгрузить, мин" />
+        <NumericUpDown x:Name="QwenUnload"
+                       Grid.Row="3"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="0"
+                       Maximum="1440"
+                       Increment="1"
+                       FormatString="0" />
+      </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Classes="accent" Content="Сохранить" Click="OnSaveTts" />
+        <TextBlock x:Name="TtsStatus" Classes="hint" VerticalAlignment="Center" />
+      </StackPanel>
+      <TextBlock Classes="hint"
+                 Text="Qwen3-TTS работает через mlx-audio. Если по локальному адресу сервер не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после указанного простоя, чтобы освободить память (0 — не останавливать). Первая фраза после запуска ждёт загрузки модели. Если сервер недоступен, ответ дочитывает голос macOS." />
     </StackPanel>
 
     <StackPanel Spacing="8">
@@ -117,4 +151,5 @@
     </StackPanel>
 
   </StackPanel>
+  </ScrollViewer>
 </Window>

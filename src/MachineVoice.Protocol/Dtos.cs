@@ -36,6 +36,39 @@ public sealed class SettingsDto
     public PlaybackMode Mode { get; init; } = PlaybackMode.Auto;
     public List<SourceSettingDto> Sources { get; init; } = [];
     public SummarySettingsDto Summary { get; init; } = new();
+    public TtsSettingsDto Tts { get; init; } = new();
+}
+
+public sealed class TtsSettingsDto
+{
+    public TtsEngineKind Engine { get; init; } = TtsEngineKind.System;
+    public QwenTtsSettingsDto Qwen { get; init; } = new();
+}
+
+/// <summary>Qwen3-TTS through the OpenAI-compatible speech endpoint of mlx-audio (mlx_audio.server).</summary>
+public sealed class QwenTtsSettingsDto
+{
+    public const string DefaultEndpoint = "http://127.0.0.1:8899/v1";
+    public const string DefaultModel = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16";
+    public const string DefaultVoice = "Ryan";
+    public const int DefaultUnloadAfterMinutes = 10;
+    public const int MaxUnloadAfterMinutes = 24 * 60;
+
+    /// <summary>Speakers of the CustomVoice models.</summary>
+    public static IReadOnlyList<string> Voices { get; } =
+        ["Ryan", "Aiden", "Dylan", "Eric", "Uncle_Fu", "Serena", "Vivian", "Ono_Anna", "Sohee"];
+
+    /// <summary>Base URL; the request goes to {Endpoint}/audio/speech.</summary>
+    public string Endpoint { get; init; } = DefaultEndpoint;
+
+    public string Model { get; init; } = DefaultModel;
+    public string Voice { get; init; } = DefaultVoice;
+
+    /// <summary>
+    /// A server that MachineVoice started is stopped after this long without speech, which frees the model's
+    /// memory. 0 keeps it running.
+    /// </summary>
+    public int UnloadAfterMinutes { get; init; } = DefaultUnloadAfterMinutes;
 }
 
 /// <summary>Optional LLM retelling through an OpenAI-compatible endpoint (Ollama works too).</summary>

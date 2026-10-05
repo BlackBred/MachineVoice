@@ -4,7 +4,7 @@ using MachineVoice.Protocol;
 
 namespace MachineVoice.App;
 
-/// <summary>Settings that only the user changes: sources, the MCP entry, the LLM endpoint and key.</summary>
+/// <summary>Settings that only the user changes: sources, the MCP entry, the LLM endpoint and key, the TTS engine.</summary>
 public partial class SettingsWindow : Window
 {
     const string CursorSource = "cursor";
@@ -13,6 +13,7 @@ public partial class SettingsWindow : Window
     readonly ControlState _state = new();
     readonly Action<string> _log = _ => { };
     SummarySettingsDto _shownSummary = new();
+    TtsSettingsDto _shownTts = new();
     bool _updating;
     bool _busy;
 
@@ -28,6 +29,7 @@ public partial class SettingsWindow : Window
         _state = state;
         _log = log;
         ShowSummary(state.Settings.Summary);
+        ShowTts(state.Settings.Tts);
         Update(state);
         Opened += async (_, _) => await RefreshStatusesAsync();
     }
@@ -65,6 +67,8 @@ public partial class SettingsWindow : Window
         // Settings changed elsewhere (the MCP tool) replace the fields only while the user has not edited them.
         if (Same(ReadSummary(), _shownSummary) && !Same(state.Settings.Summary, _shownSummary))
             ShowSummary(state.Settings.Summary);
+        if (Same(ReadTts(), _shownTts) && !Same(state.Settings.Tts, _shownTts))
+            ShowTts(state.Settings.Tts);
     }
 
     static bool DisconnectsMcp(McpStatusDto mcp) =>
@@ -171,6 +175,30 @@ public partial class SettingsWindow : Window
         });
     }
 
+    void OnEngineChecked(object? sender, RoutedEventArgs e) => QwenFields.IsEnabled = EngineQwen.IsChecked == true;
+
+    async void OnSaveTts(object? sender, RoutedEventArgs e)
+    {
+        var tts = ReadTts();
+        TtsStatus.Text = "";
+        await RunAsync(async () =>
+        {
+            var result = await _client.UpdateSettingsAsync(tts: tts);
+            if (result.Ok)
+            {
+                _shownTts = tts;
+                TtsStatus.Text = tts.Engine == TtsEngineKind.Qwen
+                    ? "Сохранено. Модель загружается в фоне, первая фраза может подождать."
+                    : "Сохранено";
+                return;
+            }
+
+            TtsStatus.Text = result.Error == ProtocolErrors.InvalidArgument
+                ? $"Проверьте поля: адрес http(s), модель и голос обязательны, простой от 0 до {QwenTtsSettingsDto.MaxUnloadAfterMinutes} мин."
+                : "Не удалось сохранить: " + result.Error;
+        });
+    }
+
     async Task RunAsync(Func<Task> action)
     {
         _busy = true;
@@ -208,6 +236,42 @@ public partial class SettingsWindow : Window
         ApiKey = string.IsNullOrWhiteSpace(SummaryApiKey.Text) ? null : SummaryApiKey.Text.Trim(),
         TimeoutSeconds = (int)(SummaryTimeout.Value ?? SummarySettingsDto.DefaultTimeoutSeconds),
     };
+
+    void ShowTts(TtsSettingsDto tts)
+    {
+        EngineSystem.IsChecked = tts.Engine == TtsEngineKind.System;
+        EngineQwen.IsChecked = tts.Engine == TtsEngineKind.Qwen;
+        QwenFields.IsEnabled = tts.Engine == TtsEngineKind.Qwen;
+
+        var voices = QwenTtsSettingsDto.Voices.ToList();
+        if (!voices.Contains(tts.Qwen.Voice))
+            voices.Insert(0, tts.Qwen.Voice);
+        QwenVoice.ItemsSource = voices;
+        QwenVoice.SelectedItem = tts.Qwen.Voice;
+        QwenEndpoint.Text = tts.Qwen.Endpoint;
+        QwenModel.Text = tts.Qwen.Model;
+        QwenUnload.Value = tts.Qwen.UnloadAfterMinutes;
+        _shownTts = ReadTts();
+    }
+
+    TtsSettingsDto ReadTts() => new()
+    {
+        Engine = EngineQwen.IsChecked == true ? TtsEngineKind.Qwen : TtsEngineKind.System,
+        Qwen = new QwenTtsSettingsDto
+        {
+            Endpoint = string.IsNullOrWhiteSpace(QwenEndpoint.Text) ? QwenTtsSettingsDto.DefaultEndpoint : QwenEndpoint.Text.Trim(),
+            Model = string.IsNullOrWhiteSpace(QwenModel.Text) ? QwenTtsSettingsDto.DefaultModel : QwenModel.Text.Trim(),
+            Voice = QwenVoice.SelectedItem as string ?? QwenTtsSettingsDto.DefaultVoice,
+            UnloadAfterMinutes = (int)(QwenUnload.Value ?? QwenTtsSettingsDto.DefaultUnloadAfterMinutes),
+        },
+    };
+
+    static bool Same(TtsSettingsDto a, TtsSettingsDto b) =>
+        a.Engine == b.Engine
+        && a.Qwen.Endpoint == b.Qwen.Endpoint
+        && a.Qwen.Model == b.Qwen.Model
+        && a.Qwen.Voice == b.Qwen.Voice
+        && a.Qwen.UnloadAfterMinutes == b.Qwen.UnloadAfterMinutes;
 
     static bool Same(SummarySettingsDto a, SummarySettingsDto b) =>
         a.Enabled == b.Enabled

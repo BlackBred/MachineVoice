@@ -1,3 +1,5 @@
+using MachineVoice.Protocol;
+
 namespace MachineVoice.Core;
 
 /// <summary>
@@ -15,6 +17,21 @@ public interface ITtsEngine
     event EventHandler<TtsCompletedEventArgs>? Completed;
 }
 
+/// <summary>An engine that follows the TTS settings. The host applies them at start and after every change.</summary>
+public interface IConfigurableTts
+{
+    void Apply(TtsSettingsDto settings);
+}
+
+/// <summary>
+/// An engine that can fail in the middle of an utterance (a server that went away). Instead of
+/// <see cref="ITtsEngine.Completed"/> it reports the text it did not read.
+/// </summary>
+public interface IFallibleTtsEngine : ITtsEngine
+{
+    event EventHandler<TtsFailedEventArgs>? Failed;
+}
+
 public sealed class TtsProgressEventArgs(string utteranceId, int wordIndex, string word) : EventArgs
 {
     public string UtteranceId { get; } = utteranceId;
@@ -25,4 +42,17 @@ public sealed class TtsProgressEventArgs(string utteranceId, int wordIndex, stri
 public sealed class TtsCompletedEventArgs(string utteranceId) : EventArgs
 {
     public string UtteranceId { get; } = utteranceId;
+}
+
+public sealed class TtsFailedEventArgs(string utteranceId, string remainingText, int wordOffset, Exception error) : EventArgs
+{
+    public string UtteranceId { get; } = utteranceId;
+
+    /// <summary>The part of the text that was not read.</summary>
+    public string RemainingText { get; } = remainingText;
+
+    /// <summary>Index of the first word of <see cref="RemainingText"/> in the whole utterance.</summary>
+    public int WordOffset { get; } = wordOffset;
+
+    public Exception Error { get; } = error;
 }

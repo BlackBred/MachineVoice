@@ -29,8 +29,12 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> GetSettingsAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new GetSettingsCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 
-    public Task<ResultMessage> UpdateSettingsAsync(PlaybackMode? mode = null, SummarySettingsDto? summary = null, CancellationToken cancellationToken = default) =>
-        SendAsync(new UpdateSettingsCommand { Version = ProtocolVersion.Current, Id = NewId(), Mode = mode, Summary = summary }, cancellationToken);
+    public Task<ResultMessage> UpdateSettingsAsync(
+        PlaybackMode? mode = null,
+        SummarySettingsDto? summary = null,
+        TtsSettingsDto? tts = null,
+        CancellationToken cancellationToken = default) =>
+        SendAsync(new UpdateSettingsCommand { Version = ProtocolVersion.Current, Id = NewId(), Mode = mode, Summary = summary, Tts = tts }, cancellationToken);
 
     public Task<ResultMessage> ConnectSourceAsync(string source, CancellationToken cancellationToken = default) =>
         SendAsync(new ConnectSourceCommand { Version = ProtocolVersion.Current, Id = NewId(), Source = source }, cancellationToken);

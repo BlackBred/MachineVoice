@@ -133,6 +133,11 @@ static class McpTools
                 ["timeoutSeconds"] = summary.TimeoutSeconds,
                 ["apiKeySet"] = !string.IsNullOrEmpty(summary.ApiKey),
             },
+            ["tts"] = new JsonObject
+            {
+                ["engine"] = Name(snapshot.Settings.Tts.Engine, ProtocolJsonContext.Default.TtsEngineKind),
+                ["voice"] = snapshot.Settings.Tts.Engine == TtsEngineKind.Qwen ? snapshot.Settings.Tts.Qwen.Voice : null,
+            },
         };
         return ToolResult.Ok(report.ToJsonString(Indented));
     }
