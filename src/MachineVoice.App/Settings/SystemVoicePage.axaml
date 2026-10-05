@@ -1,0 +1,25 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.SystemVoicePage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Голос macOS" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Темп голоса" />
+      <NumericUpDown x:Name="Rate"
+                     Width="140"
+                     HorizontalAlignment="Left"
+                     Minimum="0"
+                     Maximum="1"
+                     Increment="0.05"
+                     FormatString="0.00" />
+      <TextBlock Classes="hint" Text="0,5 — обычный. Синтезатор сам сокращает паузы, поэтому на ускорении звучит естественнее, чем скорость. Действует со следующего ответа." />
+    </StackPanel>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

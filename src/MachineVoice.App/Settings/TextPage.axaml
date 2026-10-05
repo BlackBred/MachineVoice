@@ -1,0 +1,37 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.TextPage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Обработка текста" />
+
+    <StackPanel Spacing="10">
+      <TextBlock Classes="h" Text="Пересказ через LLM" />
+      <CheckBox x:Name="Enabled" Content="Пересказывать ответы перед чтением" />
+      <Grid Classes="form" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="Адрес" />
+        <TextBox x:Name="Endpoint" Grid.Column="1" PlaceholderText="http://localhost:11434/v1" />
+        <TextBlock Grid.Row="1" Text="Модель" />
+        <TextBox x:Name="Model" Grid.Row="1" Grid.Column="1" PlaceholderText="например, qwen3:8b" />
+        <TextBlock Grid.Row="2" Text="Ключ API" />
+        <TextBox x:Name="ApiKey" Grid.Row="2" Grid.Column="1" PasswordChar="•" PlaceholderText="не нужен для Ollama" />
+        <TextBlock Grid.Row="3" Text="Тайм-аут, с" />
+        <NumericUpDown x:Name="Timeout"
+                       Grid.Row="3"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="1"
+                       Maximum="300"
+                       Increment="1"
+                       FormatString="0" />
+      </Grid>
+      <TextBlock Classes="hint" Text="Любой OpenAI-совместимый сервер, например Ollama. Если модель не ответит вовремя, ответ читается без пересказа." />
+    </StackPanel>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

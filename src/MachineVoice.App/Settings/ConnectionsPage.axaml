@@ -1,0 +1,45 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.ConnectionsPage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Подключения" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Источники" />
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock Text="Cursor" FontWeight="SemiBold" />
+            <TextBlock x:Name="CursorStatusText" Classes="hint" />
+          </StackPanel>
+          <Button x:Name="CursorButton" Grid.Column="1" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+      <TextBlock x:Name="LegacyWarning"
+                 Classes="warning"
+                 IsVisible="False"
+                 Text="В ~/.cursor/hooks.json остался старый хук speak.sh: ответы будут читаться дважды. Выключите его командой «cursor-speaker.sh off»." />
+      <TextBlock x:Name="CursorError" Classes="error" IsVisible="False" />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="MCP" />
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock Text="MCP-сервер в Cursor" FontWeight="SemiBold" />
+            <TextBlock x:Name="McpStatusText" Classes="hint" />
+          </StackPanel>
+          <Button x:Name="McpButton" Grid.Column="1" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+      <TextBlock Classes="hint" Text="Управление MachineVoice фразами в чате Cursor: «поставь чтение на паузу», «включи тихий режим»." />
+      <TextBlock x:Name="McpHint"
+                 Classes="warning"
+                 IsVisible="False"
+                 Text="Если Cursor не подхватил сервер сам, включите machinevoice в настройках MCP в Cursor или перезапустите Cursor." />
+      <TextBlock x:Name="McpError" Classes="error" IsVisible="False" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

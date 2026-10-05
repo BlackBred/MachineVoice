@@ -1,0 +1,66 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.OmniVoicePage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="OmniVoice" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Голос" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <ComboBox x:Name="Voice" Width="290" />
+        <Button x:Name="PlayButton" Content="Прослушать" />
+        <Button x:Name="DeleteButton" Content="Удалить" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="OmniVoice копирует образец выбранного голоса в каждой фразе. Встроенные голоса удалить нельзя." />
+    </StackPanel>
+
+    <Border Classes="card">
+      <StackPanel Spacing="8">
+        <TextBlock Text="Новый голос" FontWeight="SemiBold" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button x:Name="NewVoiceButton" Content="Придумать голос" />
+          <TextBlock x:Name="StudioStatus" Classes="hint" VerticalAlignment="Center" MaxWidth="380" />
+        </StackPanel>
+        <StackPanel x:Name="DraftPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
+          <TextBox x:Name="DraftName" Width="200" PlaceholderText="Название голоса" />
+          <Button x:Name="SaveDraftButton" Content="Сохранить голос" />
+          <Button x:Name="PlayDraftButton" Content="Прослушать ещё раз" />
+        </StackPanel>
+        <TextBlock Classes="hint" Text="Случайный голос читает короткую фразу. Понравился — сохраните, не понравился — придумайте другой." />
+      </StackPanel>
+    </Border>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Язык текста" />
+      <TextBox x:Name="Language" Width="120" HorizontalAlignment="Left" PlaceholderText="ru" />
+      <TextBlock Classes="hint" Text="Код языка ответов: ru, en и т. п." />
+    </StackPanel>
+
+    <Expander Header="Сервер и модель" HorizontalAlignment="Stretch">
+      <Grid Classes="form" ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="Сервер" />
+        <TextBox x:Name="Endpoint" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
+        <TextBlock Grid.Row="1" Text="Модель" />
+        <TextBox x:Name="Model" Grid.Row="1" Grid.Column="1" PlaceholderText="mlx-community/OmniVoice-bfloat16" />
+        <TextBlock Grid.Row="2" Text="Остановить через, мин" />
+        <NumericUpDown x:Name="Unload"
+                       Grid.Row="2"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="0"
+                       Maximum="1440"
+                       Increment="1"
+                       FormatString="0" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Classes="hint"
+                   Text="Если по адресу никто не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после простоя, пока OmniVoice — основной движок (0 — не останавливать)." />
+      </Grid>
+    </Expander>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

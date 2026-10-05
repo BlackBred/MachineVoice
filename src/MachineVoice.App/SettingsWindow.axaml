@@ -2,12 +2,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MachineVoice.App.SettingsWindow"
         Title="MachineVoice — настройки"
-        Width="600"
-        MaxHeight="860"
-        SizeToContent="Height"
-        CanResize="False"
+        Width="840"
+        Height="640"
+        MinWidth="720"
+        MinHeight="480"
         WindowStartupLocation="CenterScreen">
   <Window.Styles>
+    <Style Selector="TextBlock.title">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
     <Style Selector="TextBlock.h">
       <Setter Property="FontSize" Value="15" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -35,207 +39,23 @@
     <Style Selector="Grid.form > TextBlock">
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <Style Selector="StackPanel.savebar">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Spacing" Value="12" />
+      <Setter Property="Margin" Value="0,4,0,0" />
+    </Style>
+    <Style Selector="ListBox#Nav ListBoxItem">
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
   </Window.Styles>
 
-  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-  <StackPanel Margin="24" Spacing="22">
-
-    <StackPanel Spacing="8">
-      <TextBlock Classes="h" Text="Режим" />
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <RadioButton x:Name="ModeAuto" GroupName="mode" Content="Авто" IsCheckedChanged="OnModeChecked" />
-        <RadioButton x:Name="ModeConfirm" GroupName="mode" Content="По подтверждению" IsCheckedChanged="OnModeChecked" />
-        <RadioButton x:Name="ModeSilent" GroupName="mode" Content="Тихий" IsCheckedChanged="OnModeChecked" />
-      </StackPanel>
-      <TextBlock Classes="hint"
-                 Text="«Авто» читает каждый ответ сразу. «По подтверждению» сначала показывает тост с кнопкой «Слушать». «Тихий» только сохраняет ответы в историю." />
-    </StackPanel>
-
-    <StackPanel Spacing="8">
-      <TextBlock Classes="h" Text="Порядок" />
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <RadioButton x:Name="OrderLifo" GroupName="order" Content="Сначала новые (стек)" IsCheckedChanged="OnOrderChecked" />
-        <RadioButton x:Name="OrderFifo" GroupName="order" Content="По порядку (очередь)" IsCheckedChanged="OnOrderChecked" />
-      </StackPanel>
-      <TextBlock Classes="hint"
-                 Text="Звучащий ответ всегда дочитывается. «Сначала новые» ставит пришедший ответ следующим, а в режиме «По подтверждению» он сразу заменяет тост; прежний ответ ждёт за ним. Переключение сразу переставляет ответы, которые уже ждут." />
-    </StackPanel>
-
-    <StackPanel Spacing="8">
-      <TextBlock Classes="h" Text="Читать агента и проект" />
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <RadioButton x:Name="HeadingAlways" GroupName="heading" Content="Всегда" IsCheckedChanged="OnHeadingChecked" />
-        <RadioButton x:Name="HeadingOnChange" GroupName="heading" Content="При смене" IsCheckedChanged="OnHeadingChecked" />
-        <RadioButton x:Name="HeadingNever" GroupName="heading" Content="Никогда" IsCheckedChanged="OnHeadingChecked" />
-      </StackPanel>
-      <TextBlock Classes="hint"
-                 Text="Перед ответом звучит «Cursor, проект X». «При смене» читает это, только если предыдущий прочитанный ответ был от другого агента или из другого проекта. Действует со следующего ответа." />
-    </StackPanel>
-
-    <StackPanel Spacing="10">
-      <TextBlock Classes="h" Text="Озвучка" />
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <RadioButton x:Name="EngineSystem" GroupName="engine" Content="Голос macOS" IsCheckedChanged="OnEngineChecked" />
-        <RadioButton x:Name="EngineQwen" GroupName="engine" Content="Qwen3-TTS" IsCheckedChanged="OnEngineChecked" />
-        <RadioButton x:Name="EngineOmni" GroupName="engine" Content="OmniVoice" IsCheckedChanged="OnEngineChecked" />
-      </StackPanel>
-      <Grid Classes="form" ColumnDefinitions="120,*">
-        <TextBlock Text="Скорость" />
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-          <NumericUpDown x:Name="PlaybackRate"
-                         Width="140"
-                         Minimum="0.5"
-                         Maximum="2"
-                         Increment="0.1"
-                         FormatString="0.0#"
-                         ValueChanged="OnPlaybackRateChanged" />
-          <TextBlock Classes="hint" VerticalAlignment="Center" Text="меняется сразу, в том числе посреди ответа" />
-        </StackPanel>
-      </Grid>
-      <Grid x:Name="SystemFields" Classes="form" ColumnDefinitions="120,*">
-        <TextBlock Text="Темп голоса" />
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-          <NumericUpDown x:Name="SystemRate"
-                         Width="140"
-                         Minimum="0"
-                         Maximum="1"
-                         Increment="0.05"
-                         FormatString="0.00" />
-          <TextBlock Classes="hint" VerticalAlignment="Center" Text="голос macOS, 0,5 — обычный" />
-        </StackPanel>
-      </Grid>
-      <Grid x:Name="QwenFields" Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
-        <TextBlock Text="Голос" />
-        <ComboBox x:Name="QwenVoice" Grid.Column="1" Width="200" HorizontalAlignment="Left" />
-        <TextBlock Grid.Row="1" Text="Сервер" />
-        <TextBox x:Name="QwenEndpoint" Grid.Row="1" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
-        <TextBlock Grid.Row="2" Text="Модель" />
-        <TextBox x:Name="QwenModel" Grid.Row="2" Grid.Column="1" PlaceholderText="mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16" />
-        <TextBlock Grid.Row="3" Text="Выгрузить, мин" />
-        <NumericUpDown x:Name="QwenUnload"
-                       Grid.Row="3"
-                       Grid.Column="1"
-                       HorizontalAlignment="Left"
-                       Width="140"
-                       Minimum="0"
-                       Maximum="1440"
-                       Increment="1"
-                       FormatString="0" />
-      </Grid>
-      <StackPanel x:Name="OmniFields" Spacing="10">
-        <Grid Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
-          <TextBlock Text="Голос" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-            <ComboBox x:Name="OmniVoice" Width="220" SelectionChanged="OnOmniVoiceSelected" />
-            <Button x:Name="OmniPlay" Content="Прослушать" Click="OnPlayVoice" />
-            <Button x:Name="OmniDelete" Content="Удалить" Click="OnDeleteVoice" />
-          </StackPanel>
-          <TextBlock Grid.Row="1" Text="Сервер" />
-          <TextBox x:Name="OmniEndpoint" Grid.Row="1" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
-          <TextBlock Grid.Row="2" Text="Модель" />
-          <TextBox x:Name="OmniModel" Grid.Row="2" Grid.Column="1" PlaceholderText="mlx-community/OmniVoice-bfloat16" />
-          <TextBlock Grid.Row="3" Text="Выгрузить, мин" />
-          <NumericUpDown x:Name="OmniUnload"
-                         Grid.Row="3"
-                         Grid.Column="1"
-                         HorizontalAlignment="Left"
-                         Width="140"
-                         Minimum="0"
-                         Maximum="1440"
-                         Increment="1"
-                         FormatString="0" />
-        </Grid>
-        <Border Classes="card">
-          <StackPanel Spacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-              <Button x:Name="NewVoiceButton" Content="Новый голос" Click="OnNewVoice" />
-              <TextBlock x:Name="NewVoiceStatus" Classes="hint" VerticalAlignment="Center" MaxWidth="400" />
-            </StackPanel>
-            <StackPanel x:Name="DraftPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
-              <TextBox x:Name="DraftName" Width="200" PlaceholderText="Название голоса" />
-              <Button Classes="accent" Content="Сохранить голос" Click="OnSaveDraft" />
-              <Button Content="Прослушать ещё раз" Click="OnPlayDraft" />
-            </StackPanel>
-            <TextBlock Classes="hint"
-                       Text="Встроенные голоса идут с приложением, их нельзя удалить. «Новый голос» придумывает случайный и читает им короткую фразу. Понравился — сохраните, и OmniVoice будет копировать его в каждой фразе. Не понравился — нажмите ещё раз. Без выбранного голоса каждая фраза звучит новым голосом." />
-          </StackPanel>
-        </Border>
-      </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <Button Classes="accent" Content="Сохранить" Click="OnSaveTts" />
-        <TextBlock x:Name="TtsStatus" Classes="hint" VerticalAlignment="Center" />
-      </StackPanel>
-      <TextBlock Classes="hint"
-                 Text="Скорость ускоряет или замедляет готовый звук без изменения высоты голоса. Темп голоса задаёт сам синтезатор macOS: паузы и ударения при этом остаются естественными, но он действует со следующего ответа. У нейросетей Qwen3-TTS и OmniVoice своего темпа нет. Обе работают локально через mlx-audio, в одном сервере. Если по локальному адресу сервер не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после указанного простоя, чтобы освободить память (0 — не останавливать). Первая фраза после запуска ждёт загрузки модели. Если сервер недоступен, ответ дочитывает голос macOS." />
-    </StackPanel>
-
-    <StackPanel Spacing="8">
-      <TextBlock Classes="h" Text="Источники" />
-      <Border Classes="card">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-          <StackPanel Spacing="2" VerticalAlignment="Center">
-            <TextBlock Text="Cursor" FontWeight="SemiBold" />
-            <TextBlock x:Name="CursorStatusText" Classes="hint" />
-          </StackPanel>
-          <Button x:Name="CursorButton" Grid.Column="1" VerticalAlignment="Center" Click="OnCursorClick" />
-        </Grid>
-      </Border>
-      <TextBlock x:Name="LegacyWarning"
-                 Classes="warning"
-                 IsVisible="False"
-                 Text="В ~/.cursor/hooks.json остался старый хук speak.sh: ответы будут читаться дважды. Выключите его командой «cursor-speaker.sh off»." />
-      <TextBlock x:Name="CursorError" Classes="error" IsVisible="False" />
-    </StackPanel>
-
-    <StackPanel Spacing="8">
-      <TextBlock Classes="h" Text="MCP" />
-      <Border Classes="card">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-          <StackPanel Spacing="2" VerticalAlignment="Center">
-            <TextBlock Text="MCP-сервер в Cursor" FontWeight="SemiBold" />
-            <TextBlock x:Name="McpStatusText" Classes="hint" />
-          </StackPanel>
-          <Button x:Name="McpButton" Grid.Column="1" VerticalAlignment="Center" Click="OnMcpClick" />
-        </Grid>
-      </Border>
-      <TextBlock Classes="hint"
-                 Text="Позволяет управлять MachineVoice обычными фразами в чате Cursor: «поставь чтение на паузу», «включи тихий режим»." />
-      <TextBlock x:Name="McpHint"
-                 Classes="warning"
-                 IsVisible="False"
-                 Text="Если Cursor не подхватил сервер сам, включите machinevoice в настройках MCP в Cursor или перезапустите Cursor." />
-      <TextBlock x:Name="McpError" Classes="error" IsVisible="False" />
-    </StackPanel>
-
-    <StackPanel Spacing="10">
-      <TextBlock Classes="h" Text="Пересказ через LLM" />
-      <CheckBox x:Name="SummaryEnabled" Content="Пересказывать ответы перед чтением" />
-      <Grid Classes="form" ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
-        <TextBlock Text="Адрес" />
-        <TextBox x:Name="SummaryEndpoint" Grid.Column="1" PlaceholderText="http://localhost:11434/v1" />
-        <TextBlock Grid.Row="1" Text="Модель" />
-        <TextBox x:Name="SummaryModel" Grid.Row="1" Grid.Column="1" PlaceholderText="например, qwen3:8b" />
-        <TextBlock Grid.Row="2" Text="Ключ API" />
-        <TextBox x:Name="SummaryApiKey" Grid.Row="2" Grid.Column="1" PasswordChar="•" PlaceholderText="не нужен для Ollama" />
-        <TextBlock Grid.Row="3" Text="Тайм-аут, с" />
-        <NumericUpDown x:Name="SummaryTimeout"
-                       Grid.Row="3"
-                       Grid.Column="1"
-                       HorizontalAlignment="Left"
-                       Width="140"
-                       Minimum="1"
-                       Maximum="300"
-                       Increment="1"
-                       FormatString="0" />
-      </Grid>
-      <StackPanel Orientation="Horizontal" Spacing="12">
-        <Button Classes="accent" Content="Сохранить" Click="OnSaveSummary" />
-        <TextBlock x:Name="SummaryStatus" Classes="hint" VerticalAlignment="Center" />
-      </StackPanel>
-      <TextBlock Classes="hint"
-                 Text="Подходит любой OpenAI-совместимый сервер, например Ollama. Если модель не ответит вовремя, ответ читается без пересказа." />
-    </StackPanel>
-
-  </StackPanel>
-  </ScrollViewer>
+  <Grid ColumnDefinitions="210,*">
+    <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+      <ListBox x:Name="Nav" Background="Transparent" Margin="8,16" />
+    </Border>
+    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <ContentControl x:Name="PageHost" Margin="28,22,28,28" />
+    </ScrollViewer>
+  </Grid>
 </Window>

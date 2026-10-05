@@ -1,0 +1,42 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.GeneralPage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Общее" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Режим" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="ModeAuto" GroupName="mode" Content="Авто" />
+        <RadioButton x:Name="ModeConfirm" GroupName="mode" Content="По подтверждению" />
+        <RadioButton x:Name="ModeSilent" GroupName="mode" Content="Тихий" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="«По подтверждению» сначала показывает тост с кнопкой «Слушать», «Тихий» только сохраняет ответы в историю." />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Порядок" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="OrderLifo" GroupName="order" Content="Сначала новые" />
+        <RadioButton x:Name="OrderFifo" GroupName="order" Content="По порядку" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="Звучащий ответ всегда дочитывается; «Сначала новые» ставит пришедший ответ следующим." />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Читать агента и проект" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="HeadingAlways" GroupName="heading" Content="Всегда" />
+        <RadioButton x:Name="HeadingOnChange" GroupName="heading" Content="При смене" />
+        <RadioButton x:Name="HeadingNever" GroupName="heading" Content="Никогда" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="«При смене» читает «Cursor, проект X», только если предыдущий ответ был от другого агента или проекта." />
+    </StackPanel>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

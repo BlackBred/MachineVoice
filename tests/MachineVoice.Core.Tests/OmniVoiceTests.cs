@@ -94,6 +94,58 @@ public class OmniVoiceEngineTests
         Assert.Equal(
             "http://127.0.0.1:8899/v1/models?model_name=" + Uri.EscapeDataString(QwenTtsSettingsDto.DefaultModel),
             unload.RequestUri!.ToString());
+        Assert.Equal("idle 0", server.Calls.Last());
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task EngineLeftWhileReading_LetsTheServerGo_OnceTheResponseEnds()
+    {
+        var server = new FakeSpeechServer();
+        var player = new FakeAudioPlayer();
+        var http = new StubHttpHandler((request, body, _) => Task.FromResult(
+            request.RequestUri!.AbsolutePath.EndsWith("/audio/speech") ? Audio(body) : new HttpResponseMessage(HttpStatusCode.OK)));
+        using var tts = QwenSynthesizer.Engine(player, server, http);
+        var recorder = new TtsRecorder(tts);
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.Qwen });
+
+        tts.Speak("u", "Фраза.");
+        await player.WaitForPlayAsync(1);
+        tts.Apply(new TtsSettingsDto { Engine = TtsEngineKind.System });
+        Assert.DoesNotContain("idle 0", server.Calls);
+        player.End();
+
+        await recorder.Completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitAsync(() => server.Calls.Contains("idle 0"));
+        Assert.Equal("idle 0", server.Calls.Last());
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task SharedServer_StopsAfterThePeriodOfTheSelectedEngine()
+    {
+        await using var root = new TempRoot();
+        var inner = new FakeSpeechServer();
+        using var shared = new SharedSpeechServer(inner);
+        var http = new StubHttpHandler((_, _, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        using var qwen = QwenSynthesizer.Engine(new FakeAudioPlayer(), shared.Lease(), http);
+        using var omni = OmniVoiceSynthesizer.Engine(
+            new FakeAudioPlayer(), new OmniVoiceSynthesizer(new VoiceLibrary(root.Path), shared.Lease(), http));
+        var settings = new TtsSettingsDto
+        {
+            Engine = TtsEngineKind.OmniVoice,
+            Qwen = new QwenTtsSettingsDto { UnloadAfterMinutes = 3 },
+            OmniVoice = new OmniVoiceTtsSettingsDto { UnloadAfterMinutes = 30 },
+        };
+
+        omni.Apply(settings);
+        qwen.Apply(settings);
+        await WaitAsync(() => inner.Calls.Contains("idle 30"));
+
+        var switched = new TtsSettingsDto { Engine = TtsEngineKind.Qwen, Qwen = settings.Qwen, OmniVoice = settings.OmniVoice };
+        qwen.Apply(switched);
+        omni.Apply(switched);
+        await WaitAsync(() => inner.Calls.Contains("idle 3"));
+        await Task.Delay(50);
+        Assert.Equal("idle 3", inner.Calls.Last());
     }
 
     [Fact(Timeout = 20000)]

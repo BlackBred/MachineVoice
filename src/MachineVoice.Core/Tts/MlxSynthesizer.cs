@@ -5,7 +5,9 @@ namespace MachineVoice.Core;
 /// <summary>
 /// A model served by mlx-audio, for <see cref="ChunkedAudioEngine"/>. Selecting the engine starts the server and
 /// loads the model in the background; leaving it frees the model, since the server may keep running for another
-/// one. While nothing is read the server may stop after the idle period of the settings.
+/// one. While nothing is read the server may stop after the idle period of the settings. An engine that is not
+/// selected lets the server go at once, so on a shared server the period of the selected engine counts; a voice
+/// sample made through an engine that is not selected still keeps its own period.
 /// </summary>
 public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurableTts, IDisposable
     where TSettings : class, IMlxModelSettings
@@ -15,6 +17,9 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
     // The first load downloads the model (gigabytes).
     static readonly TimeSpan LoadTimeout = TimeSpan.FromMinutes(30);
     static readonly TimeSpan UnloadTimeout = TimeSpan.FromSeconds(30);
+
+    // A shared server stops after the longest period of its users, so this one does not hold it.
+    static readonly TimeSpan NotSelected = TimeSpan.Zero;
 
     readonly object _gate = new();
     readonly TtsEngineKind _kind;
@@ -80,7 +85,7 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
         }
         else if (idle)
         {
-            _server?.Idle(UnloadAfter(selected));
+            _server?.Idle(NotSelected);
             _ = Task.Run(() => UnloadModelAsync(previous));
         }
     }
@@ -152,13 +157,13 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
         }
         finally
         {
-            End(settings);
+            End(settings, sample: true);
         }
     }
 
-    void End(TSettings settings)
+    void End(TSettings settings, bool sample)
     {
-        bool left;
+        bool left, enabled;
         lock (_gate)
         {
             _sessions--;
@@ -166,9 +171,10 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
                 return;
             left = _leftWhileBusy;
             _leftWhileBusy = false;
+            enabled = _enabled;
         }
 
-        _server?.Idle(UnloadAfter(settings));
+        _server?.Idle(enabled || sample ? UnloadAfter(settings) : NotSelected);
         if (left)
             _ = Task.Run(() => UnloadModelAsync(settings));
     }
@@ -193,11 +199,15 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
             _log?.Invoke($"{Name} warm-up failed: {ex.Message}");
         }
 
-        bool idle;
+        bool idle, enabled;
         lock (_gate)
+        {
             idle = _sessions == 0 && !_disposed;
+            enabled = _enabled;
+        }
+
         if (idle)
-            _server?.Idle(UnloadAfter(settings));
+            _server?.Idle(enabled ? UnloadAfter(settings) : NotSelected);
     }
 
     /// <summary>Only a running server can have the model; one that is not running is not started for this.</summary>
@@ -229,6 +239,6 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
             return new SpeechAudio(owner.Clean(await owner._client.SynthesizeAsync(settings, request, cancellationToken).ConfigureAwait(false)));
         }
 
-        public void Dispose() => owner.End(settings);
+        public void Dispose() => owner.End(settings, sample: false);
     }
 }

@@ -1,0 +1,40 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.QwenPage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Qwen3-TTS" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Голос" />
+      <ComboBox x:Name="Voice" Width="220" />
+      <TextBlock Classes="hint" Text="Нейросеть работает локально через mlx-audio. Своего темпа у неё нет, только скорость на странице «Голос»." />
+    </StackPanel>
+
+    <Expander Header="Сервер и модель" HorizontalAlignment="Stretch">
+      <Grid Classes="form" ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+        <TextBlock Text="Сервер" />
+        <TextBox x:Name="Endpoint" Grid.Column="1" PlaceholderText="http://127.0.0.1:8899/v1" />
+        <TextBlock Grid.Row="1" Text="Модель" />
+        <TextBox x:Name="Model" Grid.Row="1" Grid.Column="1" PlaceholderText="mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16" />
+        <TextBlock Grid.Row="2" Text="Остановить через, мин" />
+        <NumericUpDown x:Name="Unload"
+                       Grid.Row="2"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="0"
+                       Maximum="1440"
+                       Increment="1"
+                       FormatString="0" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Classes="hint"
+                   Text="Если по адресу никто не отвечает, MachineVoice сам запускает mlx_audio.server и останавливает его после простоя, пока Qwen3-TTS — основной движок (0 — не останавливать)." />
+      </Grid>
+    </Expander>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

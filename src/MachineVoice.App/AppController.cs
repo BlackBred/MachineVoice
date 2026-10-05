@@ -116,8 +116,8 @@ sealed class AppController
             }
 
             Refresh();
-            if (!_state.Settings.Sources.Any(source => source.Name == "cursor"))
-                ShowSettings();
+            if (!_state.Settings.Sources.Any(source => source.Name == ConnectionsPage.CursorSource))
+                ShowSettings(openConnections: true);
         }
         catch (Exception ex)
         {
@@ -156,7 +156,7 @@ sealed class AppController
         _tray.ModeRequested += mode => Send(client => client.SetModeAsync(mode));
         _tray.ListenRequested += id => Send(client => client.ListenAsync(id));
         _tray.OpenChatRequested += id => Send(client => client.OpenChatAsync(id));
-        _tray.SettingsRequested += ShowSettings;
+        _tray.SettingsRequested += () => ShowSettings();
         _tray.QuitRequested += () => _ = QuitAsync();
         MacApplication.UseAccessoryPolicy();
     }
@@ -271,13 +271,13 @@ sealed class AppController
             _log.Write($"No way to open a chat of source {chat.Source}.");
     }
 
-    void ShowSettings()
+    void ShowSettings(bool openConnections = false)
     {
         if (_client is null || _quitting)
             return;
         if (_settings is null)
         {
-            _settings = new SettingsWindow(_client, _state, _log.Write);
+            _settings = new SettingsWindow(_client, _state, _log.Write, openConnections);
             _settings.Closed += (_, _) => _settings = null;
         }
 
@@ -315,7 +315,7 @@ sealed class AppController
         _log.Write("Quitting.");
 
         _hideTimer.Stop();
-        _settings?.Close();
+        _settings?.CloseWithoutAsking();
         _overlay?.Close();
         _pump.Cancel();
         await StopCoreAsync();

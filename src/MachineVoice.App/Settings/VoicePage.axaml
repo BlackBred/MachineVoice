@@ -1,0 +1,43 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.VoicePage">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Голос" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Основной движок" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="EngineSystem" GroupName="engine" Content="Голос macOS" />
+        <RadioButton x:Name="EngineQwen" GroupName="engine" Content="Qwen3-TTS" />
+        <RadioButton x:Name="EngineOmni" GroupName="engine" Content="OmniVoice" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="Читает ответы. Настройки каждого движка — на его странице слева. Смена действует со следующего ответа." />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Запасной движок" />
+      <ComboBox x:Name="Fallback" Width="220" SelectedIndex="0" IsEnabled="False">
+        <ComboBoxItem Content="Голос macOS" />
+      </ComboBox>
+      <TextBlock Classes="hint" Text="Дочитывает ответ, если основной движок не справился. Пока это всегда голос macOS." />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Скорость" />
+      <NumericUpDown x:Name="PlaybackRate"
+                     Width="140"
+                     HorizontalAlignment="Left"
+                     Minimum="0.5"
+                     Maximum="2"
+                     Increment="0.1"
+                     FormatString="0.0#" />
+      <TextBlock Classes="hint" Text="Для всех движков, без изменения высоты голоса. Сохранённая скорость действует сразу, даже посреди ответа. Её меняют и кнопки «−» / «+» в оверлее." />
+    </StackPanel>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>
