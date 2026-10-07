@@ -228,6 +228,107 @@ public class ChunkedAudioEngineTests
         Assert.Equal(0.5, player.Seeks.Last(), 6);
     }
 
+    [Fact(Timeout = 20000)]
+    public async Task Lookahead_SynthesizesFiveChunksPastTheOneThatPlays()
+    {
+        var count = 0;
+        var player = new FakeAudioPlayer();
+        var synthesizer = new FakeSynthesizer(_ =>
+        {
+            Interlocked.Increment(ref count);
+            return new SpeechAudio([1]);
+        });
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+
+        tts.Speak("u", "Раз один. Два два. Три три. Четыре четыре. Пять пять. Шесть шесть. Семь семь. Восемь восемь.");
+        await WaitForCountAsync(() => count, 6);
+
+        await Task.Delay(80);
+        Assert.Equal(6, Volatile.Read(ref count));
+        Assert.Equal(1, player.PlayedCount);
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Prepare_IsPlayedBySpeak_WithoutSynthesizingAgain()
+    {
+        var count = 0;
+        var player = new FakeAudioPlayer();
+        var synthesizer = new FakeSynthesizer(_ =>
+        {
+            Interlocked.Increment(ref count);
+            return new SpeechAudio([1, 2, 3]);
+        });
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+
+        tts.Prepare("u", "Одна фраза.");
+        await WaitForCountAsync(() => count, 1);
+        Assert.Equal(0, player.PlayedCount);
+
+        tts.Speak("u", "Одна фраза.");
+        await player.WaitForPlayAsync(1);
+        await Task.Delay(50);
+        Assert.Equal(1, synthesizer.Begun);
+        Assert.Equal(1, Volatile.Read(ref count));
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Prepare_WaitsWhileThePlayingUtteranceStillNeedsChunks()
+    {
+        var count = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var player = new FakeAudioPlayer();
+        var synthesizer = new YieldingSynthesizer(async (text, cancellationToken) =>
+        {
+            var n = Interlocked.Increment(ref count);
+            if (n == 1)
+            {
+                started.TrySetResult();
+                await release.Task.WaitAsync(cancellationToken);
+            }
+
+            return new SpeechAudio([1]);
+        });
+        using var tts = new ChunkedAudioEngine(player, synthesizer, "fake", TimeSpan.FromSeconds(5));
+
+        tts.Speak("playing", "Раз один. Два два. Три три. Четыре четыре. Пять пять. Шесть шесть.");
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        tts.Prepare("next", "Дальше.");
+        await Task.Delay(80);
+        Assert.Equal(1, Volatile.Read(ref count));
+
+        release.TrySetResult();
+        await WaitForCountAsync(() => count, 7);
+    }
+
+    sealed class YieldingSynthesizer(Func<string, CancellationToken, Task<SpeechAudio>> synthesize) : IChunkSynthesizer
+    {
+        public ISynthesisSession Begin() => new Session(synthesize);
+
+        sealed class Session(Func<string, CancellationToken, Task<SpeechAudio>> synthesize) : ISynthesisSession
+        {
+            public Task PrepareAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public Task<SpeechAudio> SynthesizeAsync(string text, CancellationToken cancellationToken) =>
+                synthesize(text, cancellationToken);
+
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    static async Task WaitForCountAsync(Func<int> count, int expected)
+    {
+        var deadline = Environment.TickCount64 + 5000;
+        while (count() < expected)
+        {
+            if (Environment.TickCount64 > deadline)
+                throw new TimeoutException($"Synthesized {count()}, expected {expected}.");
+            await Task.Delay(10);
+        }
+    }
+
     [Fact]
     public void WavSeconds_ReadsTheHeader()
     {

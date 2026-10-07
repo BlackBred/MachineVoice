@@ -10,7 +10,10 @@ public sealed record SpeechChunk(string Text, int FirstWord, IReadOnlyList<strin
 /// </summary>
 public static class SpeechChunks
 {
-    public const int FirstLimit = 100;
+    /// <summary>
+    /// A third past the original 100: at 100 the first clip finished before the next one was synthesized.
+    /// </summary>
+    public const int FirstLimit = 133;
     public const int Limit = 220;
 
     /// <param name="pack">

@@ -2,7 +2,7 @@ using MachineVoice.Core;
 
 namespace MachineVoice.Core.Tests;
 
-sealed class ManualTtsEngine : ISeekableTtsEngine
+class ManualTtsEngine : ISeekableTtsEngine
 {
     readonly object _gate = new();
 

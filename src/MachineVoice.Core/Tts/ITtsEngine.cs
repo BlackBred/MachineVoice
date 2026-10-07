@@ -32,6 +32,18 @@ public interface IFallibleTtsEngine : ITtsEngine
     event EventHandler<TtsFailedEventArgs>? Failed;
 }
 
+/// <summary>
+/// Synthesizes an utterance before it is played. <see cref="ITtsEngine.Speak"/> of the same id and text
+/// plays what is already ready instead of starting over.
+/// </summary>
+public interface IPreparableTts
+{
+    void Prepare(string utteranceId, string text);
+
+    /// <summary>Drops audio that was prepared and is not playing.</summary>
+    void CancelPrepare();
+}
+
 /// <summary>An engine that knows the time of its audio and can move in it.</summary>
 public interface ISeekableTtsEngine : ITtsEngine
 {

@@ -31,9 +31,9 @@ public interface ISynthesisSession : IDisposable
 /// plays and does not start the next one. The playback rate follows the settings at once, also mid-clip.
 /// A seek moves to an exact time of the utterance; chunks not synthesized yet count with an estimated length.
 /// </summary>
-public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine, IConfigurableTts, IDisposable
+public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine, IConfigurableTts, IPreparableTts, IDisposable
 {
-    public const int DefaultLookahead = 2;
+    public const int DefaultLookahead = 5;
     static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(40);
     const long PositionIntervalMs = 250;
 
@@ -51,6 +51,10 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
     readonly bool _packSentences;
     readonly Action<string>? _log;
     Utterance? _current;
+    Utterance? _prepared;
+
+    // The utterance whose chunk is in the synthesizer. The one that plays goes first.
+    Utterance? _synthesizing;
     bool _disposed;
 
     /// <param name="name">Engine name for the log.</param>
@@ -98,6 +102,8 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
         ArgumentNullException.ThrowIfNull(text);
 
         Utterance? previous;
+        Utterance? dropped;
+        Utterance? adopted;
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -105,11 +111,40 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             _current = null;
             if (previous?.Playing == true)
                 _player.Stop();
+            adopted = null;
+            dropped = null;
+            if (_prepared is { } prepared)
+            {
+                _prepared = null;
+                if (prepared.Id == utteranceId && prepared.Text == text)
+                    adopted = prepared;
+                else
+                    dropped = prepared;
+            }
         }
 
         // The previous session ends before the next begins: a server goes idle, then busy again.
         previous?.End();
-        var next = new Utterance(utteranceId, SpeechChunks.Split(text, _packSentences), _synthesizer.Begin());
+        dropped?.End();
+        if (adopted is not null)
+        {
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    adopted.End();
+                    throw new ObjectDisposedException(GetType().FullName);
+                }
+
+                _current = adopted;
+                Wake(adopted);
+            }
+
+            _ = Task.Run(() => PlayUtteranceAsync(adopted));
+            return;
+        }
+
+        var next = new Utterance(utteranceId, text, SpeechChunks.Split(text, _packSentences), _synthesizer.Begin());
         lock (_gate)
         {
             if (_disposed)
@@ -121,7 +156,54 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             _current = next;
         }
 
-        _ = Task.Run(() => RunAsync(next));
+        next.Synthesis = SynthesizeAsync(next);
+        _ = Task.Run(() => PlayUtteranceAsync(next));
+    }
+
+    public void Prepare(string utteranceId, string text)
+    {
+        ArgumentNullException.ThrowIfNull(utteranceId);
+        ArgumentNullException.ThrowIfNull(text);
+
+        Utterance? previous;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            if (_prepared is { } prepared && prepared.Id == utteranceId && prepared.Text == text)
+                return;
+            if (_current is { } current && current.Id == utteranceId && current.Text == text)
+                return;
+            previous = _prepared;
+            _prepared = null;
+        }
+
+        previous?.End();
+        var next = new Utterance(utteranceId, text, SpeechChunks.Split(text, _packSentences), _synthesizer.Begin());
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                next.End();
+                return;
+            }
+
+            _prepared = next;
+        }
+
+        next.Synthesis = SynthesizeAsync(next);
+    }
+
+    public void CancelPrepare()
+    {
+        Utterance? prepared;
+        lock (_gate)
+        {
+            prepared = _prepared;
+            _prepared = null;
+        }
+
+        prepared?.End();
     }
 
     public void Pause()
@@ -133,7 +215,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             utterance.Paused = true;
             if (utterance.Playing)
                 _player.Pause();
-            utterance.Signal();
+            Wake(utterance);
         }
     }
 
@@ -146,7 +228,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             utterance.Paused = false;
             if (utterance.Playing)
                 _player.Resume();
-            utterance.Signal();
+            Wake(utterance);
         }
     }
 
@@ -192,7 +274,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
                         cancelled.Add(cancel);
                 }
 
-                utterance.Signal();
+                Wake(utterance);
             }
 
             moved = new TtsPositionEventArgs(utterance.Id, Start(lengths, index) + fraction * lengths[index], lengths.Sum());
@@ -220,24 +302,27 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
     public void Dispose()
     {
         Utterance? current;
+        Utterance? prepared;
         lock (_gate)
         {
             if (_disposed)
                 return;
             _disposed = true;
             current = _current;
+            prepared = _prepared;
             _current = null;
+            _prepared = null;
             _player.Stop();
         }
 
         current?.End();
+        prepared?.End();
         _player.Dispose();
         (_synthesizer as IDisposable)?.Dispose();
     }
 
-    async Task RunAsync(Utterance utterance)
+    async Task PlayUtteranceAsync(Utterance utterance)
     {
-        var worker = SynthesizeAsync(utterance);
         var index = 0;
         try
         {
@@ -288,7 +373,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
                     {
                         utterance.Index = index + 1;
                         utterance.Fraction = 0;
-                        utterance.Signal();
+                        Wake(utterance);
                     }
                 }
             }
@@ -305,7 +390,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
         finally
         {
             utterance.Cancel();
-            await worker.ConfigureAwait(false);
+            await utterance.Synthesis.ConfigureAwait(false);
         }
 
         Finish(utterance);
@@ -332,7 +417,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             lock (_gate)
             {
                 utterance.PrepareError = ex;
-                utterance.Signal();
+                Wake(utterance);
             }
 
             return;
@@ -346,21 +431,29 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             lock (_gate)
             {
                 if (utterance.Token.IsCancellationRequested)
-                    return;
-                changed = utterance.Changed;
-                var last = LastWanted(utterance, utterance.Index);
-                for (var i = utterance.Index; i <= last; i++)
                 {
-                    // Past a failed chunk the player stops anyway, unless a seek skips it.
-                    if (utterance.Slots[i].State == SlotState.Failed)
+                    Wake(utterance);
+                    return;
+                }
+
+                changed = utterance.Changed;
+                if (!Blocks(utterance))
+                {
+                    var last = LastWanted(utterance, utterance.Index);
+                    for (var i = utterance.Index; i <= last; i++)
+                    {
+                        // Past a failed chunk the player stops anyway, unless a seek skips it.
+                        if (utterance.Slots[i].State == SlotState.Failed)
+                            break;
+                        if (utterance.Slots[i].State != SlotState.Idle)
+                            continue;
+                        target = i;
+                        slot = utterance.Slots[i];
+                        slot.State = SlotState.Running;
+                        slot.Cancel = CancellationTokenSource.CreateLinkedTokenSource(utterance.Token);
+                        _synthesizing = utterance;
                         break;
-                    if (utterance.Slots[i].State != SlotState.Idle)
-                        continue;
-                    target = i;
-                    slot = utterance.Slots[i];
-                    slot.State = SlotState.Running;
-                    slot.Cancel = CancellationTokenSource.CreateLinkedTokenSource(utterance.Token);
-                    break;
+                    }
                 }
             }
 
@@ -372,6 +465,8 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
                 }
                 catch (OperationCanceledException)
                 {
+                    lock (_gate)
+                        Wake(utterance);
                     return;
                 }
 
@@ -390,6 +485,13 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
             }
             catch (OperationCanceledException) when (utterance.Token.IsCancellationRequested)
             {
+                lock (_gate)
+                {
+                    if (_synthesizing == utterance)
+                        _synthesizing = null;
+                    Wake(utterance);
+                }
+
                 return;
             }
             catch (OperationCanceledException) when (seek.IsCancellationRequested)
@@ -407,6 +509,8 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
 
             lock (_gate)
             {
+                if (_synthesizing == utterance)
+                    _synthesizing = null;
                 slot.Cancel = null;
                 if (again)
                 {
@@ -424,7 +528,7 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
                     slot.Seconds = WavFile.Seconds(audio!.Wav);
                 }
 
-                utterance.Signal();
+                Wake(utterance);
             }
 
             seek.Dispose();
@@ -499,6 +603,37 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
     }
 
     int LastWanted(Utterance utterance, int index) => (int)Math.Min(utterance.Chunks.Count - 1L, (long)index + _lookahead);
+
+    /// <summary>The playing utterance takes the synthesizer; a prepared one waits until that window is full.</summary>
+    bool Blocks(Utterance utterance)
+    {
+        if (_synthesizing is not null && _synthesizing != utterance)
+            return true;
+        return utterance != _current && _current is { } playing && NeedsChunk(playing);
+    }
+
+    bool NeedsChunk(Utterance utterance)
+    {
+        var last = LastWanted(utterance, utterance.Index);
+        for (var i = utterance.Index; i <= last; i++)
+        {
+            if (utterance.Slots[i].State == SlotState.Failed)
+                return false;
+            if (utterance.Slots[i].State is SlotState.Idle or SlotState.Running)
+                return true;
+        }
+
+        return false;
+    }
+
+    void Wake(Utterance utterance)
+    {
+        utterance.Signal();
+        if (utterance != _current)
+            _current?.Signal();
+        if (utterance != _prepared)
+            _prepared?.Signal();
+    }
 
     static (int Index, double Fraction) Locate(double[] lengths, double position)
     {
@@ -620,15 +755,18 @@ public sealed class ChunkedAudioEngine : IFallibleTtsEngine, ISeekableTtsEngine,
         TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int _ended;
 
-        public Utterance(string id, IReadOnlyList<SpeechChunk> chunks, ISynthesisSession session)
+        public Utterance(string id, string text, IReadOnlyList<SpeechChunk> chunks, ISynthesisSession session)
         {
             Id = id;
+            Text = text;
             Session = session;
             Chunks = chunks;
             Slots = Chunks.Select(_ => new Slot()).ToArray();
         }
 
         public string Id { get; }
+        public string Text { get; }
+        public Task Synthesis { get; set; } = Task.CompletedTask;
         public ISynthesisSession Session { get; }
         public IReadOnlyList<SpeechChunk> Chunks { get; }
         public Slot[] Slots { get; }

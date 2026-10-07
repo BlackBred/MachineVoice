@@ -40,6 +40,12 @@ sealed class SpeechEngine : IAsyncDisposable
 
     // Set when the TTS engine refused to speak, so one failure does not run through the whole queue.
     bool _hold;
+
+    // The queued response already sent to the synthesizer, and whether the one playing is near its end.
+    const double NextItemLeadSeconds = 15;
+    string? _warmId;
+    string? _warmText;
+    bool _nearEnd;
     Task? _loop;
     int _disposed;
 
@@ -155,6 +161,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
         try
         {
+            if (_tts is IPreparableTts preparable)
+                preparable.CancelPrepare();
             _tts.Stop();
         }
         catch (Exception ex)
@@ -181,6 +189,8 @@ sealed class SpeechEngine : IAsyncDisposable
                     _log?.Invoke(ex.ToString());
                     Fail(work, ex);
                 }
+
+                WarmNext();
             }
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
@@ -988,6 +998,7 @@ sealed class SpeechEngine : IAsyncDisposable
             Position = args.Position,
             Duration = args.Duration,
         });
+        _nearEnd = args.Duration > 0 && args.Duration - args.Position <= NextItemLeadSeconds;
     }
 
     void OnCompleted(string utteranceId)
@@ -1031,9 +1042,10 @@ sealed class SpeechEngine : IAsyncDisposable
 
     void BeginSpeak(SpeechItem item)
     {
+        _nearEnd = false;
         _current = item;
         var heading = SpeechHeading.Of(item.Source, item.Project);
-        item.Speech = WithHeading(heading, item.Speech ?? item.Text);
+        item.Speech = UtteranceText(item);
         _byId[item.Id] = ToDto(item);
         try
         {
@@ -1054,6 +1066,59 @@ sealed class SpeechEngine : IAsyncDisposable
         _player = PlayerState.Speaking;
         Publish(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = item.Id });
     }
+
+    /// <summary>
+    /// The response waiting for «Слушать», or the next queued one once the current clip is inside its last
+    /// <see cref="NextItemLeadSeconds"/>. Silent mode and a held queue stay unprepared.
+    /// </summary>
+    void WarmNext()
+    {
+        if (_tts is not IPreparableTts preparable)
+            return;
+
+        var next = NextToPrepare();
+        if (next is null)
+        {
+            if (_warmId is null)
+                return;
+            preparable.CancelPrepare();
+            _warmId = null;
+            _warmText = null;
+            return;
+        }
+
+        var text = UtteranceText(next);
+        if (_warmId == next.Id && _warmText == text)
+            return;
+
+        preparable.Prepare(next.Id, text);
+        _warmId = next.Id;
+        _warmText = text;
+        _log?.Invoke($"Preparing {next.Id} before playback.");
+    }
+
+    SpeechItem? NextToPrepare()
+    {
+        if (_mode == PlaybackMode.Silent || _hold)
+            return null;
+
+        if (_confirmationItemId is { } confirmed)
+        {
+            var waiting = _queue.Find(item => item.Id == confirmed);
+            return waiting is { Speech: not null } ? waiting : null;
+        }
+
+        if (_nearEnd && _player is PlayerState.Speaking or PlayerState.Paused && _queue.Count > 0)
+        {
+            var head = _queue[0];
+            return head.Speech is null ? null : head;
+        }
+
+        return null;
+    }
+
+    string UtteranceText(SpeechItem item) =>
+        WithHeading(SpeechHeading.Of(item.Source, item.Project), item.Speech ?? item.Text);
 
     // An empty body still gets the heading: the TTS engine is never given nothing to say.
     string WithHeading(string heading, string body)

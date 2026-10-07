@@ -21,7 +21,7 @@ public class OmniVoiceEngineTests
         tts.Apply(Settings(voice.Id));
 
         // Too long together for the first chunk, which stays short so that speech starts sooner.
-        const string first = "Первая фраза достаточно длинная, чтобы не поместиться в первый кусок.";
+        const string first = "Первая фраза достаточно длинная, чтобы по-прежнему не поместиться в первый кусок.";
         const string second = "Вторая фраза тоже не короткая, поэтому идёт отдельно.";
         tts.Speak("u", first + " " + second);
         for (var i = 1; i <= 2; i++)

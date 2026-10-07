@@ -9,7 +9,7 @@ namespace MachineVoice.Core;
 /// selected. Owns all engines. After a fallback the times continue from where the failed engine stopped, and a
 /// seek reaches only the rest that the next engine reads.
 /// </summary>
-public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposable
+public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IPreparableTts, IDisposable
 {
     // Engines are called outside _gate: AVSpeechSynthesizer may wait for the main queue, where its callbacks
     // run and would wait for _gate in turn.
@@ -83,6 +83,34 @@ public sealed class TtsSwitch : ISeekableTtsEngine, IConfigurableTts, IDisposabl
         if (previous is not null && previous != engine)
             previous.Stop();
         engine.Speak(utteranceId, text);
+    }
+
+    public void Prepare(string utteranceId, string text)
+    {
+        ITtsEngine engine;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            engine = _neural.GetValueOrDefault(_settings.Engine) ?? _system;
+        }
+
+        (engine as IPreparableTts)?.Prepare(utteranceId, text);
+    }
+
+    public void CancelPrepare()
+    {
+        List<ITtsEngine> engines;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            engines = [_system, .. _neural.Values];
+            if (_lastResort is not null)
+                engines.Add(_lastResort);
+        }
+
+        foreach (var engine in engines)
+            (engine as IPreparableTts)?.CancelPrepare();
     }
 
     public void Pause() => Routed()?.Pause();
