@@ -15,6 +15,7 @@ sealed class TrayMenu : IDisposable
     readonly NativeMenuItem _status = new() { IsEnabled = false };
     readonly NativeMenuItem _pause = new("Пауза");
     readonly NativeMenuItem _skip = new("Пропустить");
+    readonly NativeMenuItem _clipboard = new("Прочитать буфер обмена");
     readonly NativeMenuItem _queue = new("Очередь") { Menu = new NativeMenu() };
     readonly NativeMenuItem _history = new("История") { Menu = new NativeMenu() };
     readonly Dictionary<PlaybackMode, NativeMenuItem> _modes = [];
@@ -32,6 +33,7 @@ sealed class TrayMenu : IDisposable
 
         _pause.Click += (_, _) => PauseResumeRequested?.Invoke();
         _skip.Click += (_, _) => SkipRequested?.Invoke();
+        _clipboard.Click += (_, _) => ClipboardRequested?.Invoke();
         var settings = new NativeMenuItem("Настройки…");
         settings.Click += (_, _) => SettingsRequested?.Invoke();
         var quit = new NativeMenuItem("Выход");
@@ -42,6 +44,7 @@ sealed class TrayMenu : IDisposable
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(_pause);
         menu.Items.Add(_skip);
+        menu.Items.Add(_clipboard);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(new NativeMenuItem("Режим") { Menu = modes });
         menu.Items.Add(_queue);
@@ -64,6 +67,11 @@ sealed class TrayMenu : IDisposable
 
     public event Action? PauseResumeRequested;
     public event Action? SkipRequested;
+    public event Action? ClipboardRequested;
+
+    /// <summary>Shows ⌃⌥V once the global shortcut is registered. The menu item works either way.</summary>
+    public void UseClipboardShortcut(bool available) =>
+        _clipboard.Header = available ? "Прочитать буфер обмена    ⌃⌥V" : "Прочитать буфер обмена";
     public event Action<PlaybackMode>? ModeRequested;
     public event Action<string>? ListenRequested;
     public event Action<string>? OpenChatRequested;
@@ -133,12 +141,17 @@ sealed class TrayMenu : IDisposable
         foreach (var entry in state.History.TakeLast(HistoryShown).Reverse())
         {
             var time = entry.FinishedAt.ToLocalTime().ToString("HH:mm");
+            var canOpen = Labels.CanOpenChat(entry.Item.Source);
             var item = new NativeMenuItem($"{Labels.Outcome(entry.Outcome)} {time}  {Labels.Line(entry.Item)}")
             {
-                ToolTip = "Открыть чат",
+                ToolTip = canOpen ? "Открыть чат" : null,
             };
-            var id = entry.Item.Id;
-            item.Click += (_, _) => OpenChatRequested?.Invoke(id);
+            if (canOpen)
+            {
+                var id = entry.Item.Id;
+                item.Click += (_, _) => OpenChatRequested?.Invoke(id);
+            }
+
             items.Add(item);
         }
     }

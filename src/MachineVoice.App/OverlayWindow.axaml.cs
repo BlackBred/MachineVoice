@@ -56,6 +56,7 @@ public partial class OverlayWindow : Window
             TopicText.Text = Labels.Topic(item);
             PauseIcon.Data = Glyph(paused ? "PlayGlyph" : "PauseGlyph");
             ToolTip.SetTip(PauseButton, paused ? "Продолжить" : "Пауза");
+            OpenChatButton.IsVisible = Labels.CanOpenChat(item.Source);
             RateText.Text = Labels.Rate(state.Settings.Tts.PlaybackRate);
             SeekArea.IsVisible = true;
             PlaybackButtons.IsVisible = true;
@@ -71,6 +72,7 @@ public partial class OverlayWindow : Window
             SeekArea.IsVisible = false;
             PlaybackButtons.IsVisible = false;
             ConfirmButtons.IsVisible = true;
+            ConfirmOpenChatButton.IsVisible = Labels.CanOpenChat(pending.Source);
         }
     }
 

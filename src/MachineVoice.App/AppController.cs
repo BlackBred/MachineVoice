@@ -153,6 +153,11 @@ sealed class AppController
         _tray = new TrayMenu(_application);
         _tray.PauseResumeRequested += PauseResume;
         _tray.SkipRequested += () => Send(client => client.SkipAsync());
+        _tray.ClipboardRequested += SpeakClipboard;
+        var hotkey = CarbonHotkeys.Register(CarbonHotkeys.KeyV, CarbonHotkeys.Control | CarbonHotkeys.Option, SpeakClipboard);
+        _tray.UseClipboardShortcut(hotkey == 0);
+        if (hotkey != 0)
+            _log.Write($"Clipboard hotkey was not registered ({hotkey}).");
         _tray.ModeRequested += mode => Send(client => client.SetModeAsync(mode));
         _tray.ListenRequested += id => Send(client => client.ListenAsync(id));
         _tray.OpenChatRequested += id => Send(client => client.OpenChatAsync(id));
@@ -234,6 +239,37 @@ sealed class AppController
     bool OverlayWanted() =>
         (_state.Player != PlayerState.Idle && _state.Current is not null) || _state.Confirmation is not null;
 
+    void SpeakClipboard()
+    {
+        if (_quitting)
+            return;
+
+        string? text;
+        try
+        {
+            text = MacPasteboard.ReadText();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log.Write($"Clipboard read failed: {ex.Message}");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _log.Write("Clipboard is empty.");
+            return;
+        }
+
+        if (text.Trim().Length > SpeakClipboardCommand.MaxText)
+        {
+            _log.Write("Clipboard text is too long.");
+            return;
+        }
+
+        Send(client => client.SpeakClipboardAsync(text));
+    }
+
     void PauseResume()
     {
         if (_state.Player == PlayerState.Speaking)
@@ -313,6 +349,7 @@ sealed class AppController
             return;
         _quitting = true;
         _log.Write("Quitting.");
+        CarbonHotkeys.UnregisterAll();
 
         _hideTimer.Stop();
         _settings?.CloseWithoutAsking();

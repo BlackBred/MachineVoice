@@ -117,7 +117,7 @@
         <Button Classes="icon" Click="OnSkip" ToolTip.Tip="Пропустить">
           <PathIcon Data="{StaticResource SkipGlyph}" />
         </Button>
-        <Button Classes="icon" Click="OnOpenChat" ToolTip.Tip="Открыть чат">
+        <Button x:Name="OpenChatButton" Classes="icon" Click="OnOpenChat" ToolTip.Tip="Открыть чат">
           <PathIcon Data="{StaticResource ChatGlyph}" />
         </Button>
       </StackPanel>
@@ -130,7 +130,7 @@
                   IsVisible="False">
         <Button Classes="pill accent" Content="Слушать" Click="OnListen" />
         <Button Classes="pill" Content="Пропустить" Click="OnDismiss" />
-        <Button Classes="pill" Content="Открыть чат" Click="OnOpenChat" />
+        <Button x:Name="ConfirmOpenChatButton" Classes="pill" Content="Открыть чат" Click="OnOpenChat" />
       </StackPanel>
     </Grid>
   </Border>

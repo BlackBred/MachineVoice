@@ -23,6 +23,9 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default) =>
         SendAsync(new ListenCommand { Version = ProtocolVersion.Current, Id = NewId(), ItemId = itemId }, cancellationToken);
 
+    public Task<ResultMessage> SpeakClipboardAsync(string text, CancellationToken cancellationToken = default) =>
+        SendAsync(new SpeakClipboardCommand { Version = ProtocolVersion.Current, Id = NewId(), Text = text }, cancellationToken);
+
     public Task<ResultMessage> DismissAsync(string itemId, CancellationToken cancellationToken = default) =>
         SendAsync(new DismissCommand { Version = ProtocolVersion.Current, Id = NewId(), ItemId = itemId }, cancellationToken);
 

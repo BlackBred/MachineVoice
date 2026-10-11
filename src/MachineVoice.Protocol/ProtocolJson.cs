@@ -13,6 +13,7 @@ namespace MachineVoice.Protocol;
 [JsonSerializable(typeof(SetPlaybackRateCommand))]
 [JsonSerializable(typeof(SeekCommand))]
 [JsonSerializable(typeof(ListenCommand))]
+[JsonSerializable(typeof(SpeakClipboardCommand))]
 [JsonSerializable(typeof(DismissCommand))]
 [JsonSerializable(typeof(OpenChatCommand))]
 [JsonSerializable(typeof(GetSettingsCommand))]

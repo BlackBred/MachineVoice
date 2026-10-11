@@ -471,6 +471,13 @@ sealed class SpeechEngine : IAsyncDisposable
     /// </summary>
     void Prepare(SpeechItem item)
     {
+        // Clipboard text is what the user asked to hear. A retelling would replace it.
+        if (string.Equals(item.Source, SpeakClipboardCommand.Source, StringComparison.Ordinal))
+        {
+            item.Speech = RulesOf(item);
+            return;
+        }
+
         var pipeline = LlmSummarizer.IsUsable(_settings.Summary)
             ? TextPipeline.WithSummary(new LlmSummarizer(_http, _settings.Summary, _log))
             : TextPipeline.Rules();
@@ -504,6 +511,24 @@ sealed class SpeechEngine : IAsyncDisposable
         }
 
         Post(new PreparedWork(item.Id, speech));
+    }
+
+    /// <summary>The rule steps only. They finish synchronously; a failure keeps the original text.</summary>
+    string RulesOf(SpeechItem item)
+    {
+        var run = TextPipeline.Rules().RunAsync(item.Text, new SpeechContext(item.Source, item.Project, item.Topic));
+        if (run.IsCompletedSuccessfully)
+            return run.Result;
+
+        try
+        {
+            return run.AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"Text rules failed: {ex.Message}");
+            return item.Text;
+        }
     }
 
     void OnPrepared(string itemId, string speech)
@@ -541,6 +566,7 @@ sealed class SpeechEngine : IAsyncDisposable
             SetPlaybackRateCommand setRate => ApplyPlaybackRate(command.Id, setRate.Rate),
             SeekCommand seek => Seek(command.Id, seek.Position),
             ListenCommand listen => Listen(command.Id, listen.ItemId),
+            SpeakClipboardCommand clipboard => SpeakClipboard(command.Id, clipboard.Text),
             DismissCommand dismiss => Dismiss(command.Id, dismiss.ItemId),
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
             GetSettingsCommand => Ok(command.Id, settings: CopySettings()),
@@ -743,6 +769,53 @@ sealed class SpeechEngine : IAsyncDisposable
         return Ok(id);
     }
 
+    /// <summary>
+    /// Reads the clipboard text now. A confirmation toast stays up and returns when this finishes.
+    /// The text is kept in the inbox, like any other response, so a crash mid-reading does not drop it.
+    /// </summary>
+    ResultMessage SpeakClipboard(string id, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+
+        var trimmed = text.Replace('\0', ' ').Trim();
+        if (trimmed.Length == 0 || trimmed.Length > SpeakClipboardCommand.MaxText)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+
+        var draft = new StoredSubmit
+        {
+            Version = ProtocolVersion.Current,
+            Type = "submit",
+            Source = SpeakClipboardCommand.Source,
+            GenerationId = "clip-" + Guid.NewGuid().ToString("N"),
+            Topic = SpeechHeading.Topic(trimmed),
+            Text = trimmed,
+        };
+        if (SubmitRules.Validate(draft) is not null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+
+        var itemId = Guid.CreateVersion7().ToString("N");
+        var stored = SubmitRules.Canonical(draft, itemId, DateTimeOffset.UtcNow);
+        var path = _inbox.NewPath();
+        _inbox.Write(path, stored);
+        var item = ToItem(stored, path);
+        Prepare(item);
+        Remember(item);
+
+        if (_current is { } playing)
+        {
+            _tts.Stop();
+            _current = null;
+            _player = PlayerState.Idle;
+            Publish(new PlayerStateEvent { State = PlayerState.Idle });
+            Archive(playing, SpeechOutcome.Skipped);
+        }
+
+        _hold = false;
+        BeginSpeak(item);
+        return Ok(id);
+    }
+
     ResultMessage Dismiss(string id, string itemId)
     {
         if (string.IsNullOrWhiteSpace(itemId))
@@ -767,6 +840,8 @@ sealed class SpeechEngine : IAsyncDisposable
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (!_byId.TryGetValue(itemId, out var item))
             return Fail(id, ProtocolErrors.NotFound);
+        if (string.Equals(item.Source, SpeakClipboardCommand.Source, StringComparison.Ordinal))
+            return Fail(id, ProtocolErrors.InvalidState);
 
         Publish(new ChatRequestedEvent
         {

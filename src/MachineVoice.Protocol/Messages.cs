@@ -47,6 +47,19 @@ public sealed class ListenCommand : ClientMessage
     public string ItemId { get; init; } = "";
 }
 
+/// <summary>
+/// Speaks <see cref="Text"/> at once, in any playback mode. The app reads the clipboard and passes the text:
+/// the core has no pasteboard. The same limit as an ingested response.
+/// </summary>
+public sealed class SpeakClipboardCommand : ClientMessage
+{
+    public const int MaxText = 1_000_000;
+    public const string Source = "clipboard";
+
+    public string Type { get; init; } = "speakClipboard";
+    public string Text { get; init; } = "";
+}
+
 public sealed class DismissCommand : ClientMessage
 {
     public string Type { get; init; } = "dismiss";

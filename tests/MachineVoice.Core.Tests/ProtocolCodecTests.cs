@@ -32,6 +32,10 @@ public class ProtocolCodecTests
         var seek = ProtocolCodec.Write(new SeekCommand { Version = ProtocolVersion.Current, Id = "1", Position = 12.5 });
         Assert.Contains("\"type\":\"seek\"", seek);
         Assert.Equal(12.5, Assert.IsType<SeekCommand>(ProtocolCodec.ReadClient(seek).Message).Position);
+
+        var clipboard = ProtocolCodec.Write(new SpeakClipboardCommand { Version = ProtocolVersion.Current, Id = "1", Text = "из буфера" });
+        Assert.Contains("\"type\":\"speakClipboard\"", clipboard);
+        Assert.Equal("из буфера", Assert.IsType<SpeakClipboardCommand>(ProtocolCodec.ReadClient(clipboard).Message).Text);
         var position = ProtocolCodec.Write(new PlayerPositionEvent { ItemId = "i", Position = 1.5, Duration = 9 });
         Assert.Contains("\"type\":\"player.position\"", position);
         Assert.Equal(9, Assert.IsType<PlayerPositionEvent>(ProtocolCodec.ReadServer(position)).Duration);
@@ -81,6 +85,7 @@ public class ProtocolCodecTests
             new SetPlaybackRateCommand { Version = 1, Id = "v", Rate = 1.25 },
             new SeekCommand { Version = 1, Id = "e", Position = 12.5 },
             new ListenCommand { Version = 1, Id = "l", ItemId = "item" },
+            new SpeakClipboardCommand { Version = 1, Id = "b", Text = "из буфера" },
             new DismissCommand { Version = 1, Id = "d", ItemId = "item" },
             new OpenChatCommand { Version = 1, Id = "o", ItemId = "item" },
             new GetSettingsCommand { Version = 1, Id = "g" },

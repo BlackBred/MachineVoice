@@ -16,6 +16,12 @@ public interface IControlClient : IAsyncDisposable
     /// <summary>Seconds of audio from the start of the response being read.</summary>
     Task<ResultMessage> SeekAsync(double position, CancellationToken cancellationToken = default);
     Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Speaks <paramref name="text"/> now, in any mode. The response being read is skipped.
+    /// <paramref name="text"/> is the clipboard contents; this does not read the pasteboard.
+    /// </summary>
+    Task<ResultMessage> SpeakClipboardAsync(string text, CancellationToken cancellationToken = default);
     Task<ResultMessage> DismissAsync(string itemId, CancellationToken cancellationToken = default);
     Task<ResultMessage> OpenChatAsync(string itemId, CancellationToken cancellationToken = default);
     Task<ResultMessage> GetSettingsAsync(CancellationToken cancellationToken = default);

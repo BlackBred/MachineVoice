@@ -7,9 +7,13 @@ static class Labels
     public static string Source(string source) => source switch
     {
         "cursor" => "Cursor",
+        SpeakClipboardCommand.Source => "Буфер обмена",
         "" => "?",
         _ => char.ToUpperInvariant(source[0]) + source[1..],
     };
+
+    /// <summary>Only a Cursor response has a chat to bring forward.</summary>
+    public static bool CanOpenChat(string source) => source == "cursor";
 
     /// <summary>"Cursor · MachineVoice": the source and the project.</summary>
     public static string Title(SpeechItemDto item) =>

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using MachineVoice.Protocol;
 
 namespace MachineVoice.Core;
 
@@ -36,6 +37,9 @@ public static partial class SpeechHeading
 
     static string SourceName(string source)
     {
+        if (string.Equals(source, SpeakClipboardCommand.Source, StringComparison.Ordinal))
+            return "Буфер обмена";
+
         var name = source.Trim().Replace('-', ' ').Replace('_', ' ');
         return name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
     }
