@@ -147,9 +147,7 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
             using (var load = CancellationTokenSource.CreateLinkedTokenSource(linked.Token))
             {
                 load.CancelAfter(LoadTimeout);
-                if (_server is not null)
-                    await _server.EnsureRunningAsync(new Uri(settings.Endpoint), load.Token).ConfigureAwait(false);
-                await _client.LoadModelAsync(settings, load.Token).ConfigureAwait(false);
+                await LoadAsync(settings, load.Token).ConfigureAwait(false);
             }
 
             linked.CancelAfter(ChunkTimeout);
@@ -185,9 +183,7 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
         timeout.CancelAfter(LoadTimeout);
         try
         {
-            if (_server is not null)
-                await _server.EnsureRunningAsync(new Uri(settings.Endpoint), timeout.Token).ConfigureAwait(false);
-            await _client.LoadModelAsync(settings, timeout.Token).ConfigureAwait(false);
+            await LoadAsync(settings, timeout.Token).ConfigureAwait(false);
             _log?.Invoke($"{Name} model loaded: {settings.Model}");
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -208,6 +204,47 @@ public abstract class MlxSynthesizer<TSettings> : IChunkSynthesizer, IConfigurab
 
         if (idle)
             _server?.Idle(enabled ? UnloadAfter(settings) : NotSelected);
+    }
+
+    /// <summary>
+    /// Starts the server and loads the model without speaking. The first call downloads the model. The server then
+    /// stays up for the idle period of <paramref name="settings"/>, as it does after a voice sample.
+    /// </summary>
+    private protected async Task EnsureLoadedAsync(TSettings settings, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _sessions++;
+        }
+
+        _server?.Busy();
+        try
+        {
+            using var load = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+            load.CancelAfter(LoadTimeout);
+            try
+            {
+                await LoadAsync(settings, load.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Loading {settings.Model} timed out.");
+            }
+
+            _log?.Invoke($"{Name} model loaded: {settings.Model}");
+        }
+        finally
+        {
+            End(settings, sample: true);
+        }
+    }
+
+    async Task LoadAsync(TSettings settings, CancellationToken cancellationToken)
+    {
+        if (_server is not null)
+            await _server.EnsureRunningAsync(new Uri(settings.Endpoint), cancellationToken).ConfigureAwait(false);
+        await _client.LoadModelAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Only a running server can have the model; one that is not running is not started for this.</summary>

@@ -46,4 +46,10 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> CreateVoiceAsync(CancellationToken cancellationToken = default);
     Task<ResultMessage> SaveVoiceAsync(string draftId, string name, CancellationToken cancellationToken = default);
     Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether the local mlx-audio server is installed.</summary>
+    Task<ResultMessage> GetOmniVoiceStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Installs the server if needed and loads the OmniVoice model. The first run takes minutes.</summary>
+    Task<ResultMessage> InstallOmniVoiceAsync(CancellationToken cancellationToken = default);
 }

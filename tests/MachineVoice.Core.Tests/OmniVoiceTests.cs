@@ -403,6 +403,105 @@ public class VoiceCommandsTests
         await host.DisposeAsync();
     }
 
+    [Fact(Timeout = 20000)]
+    public async Task InstallOmniVoice_InstallsTheServer_AndLoadsTheSavedModel()
+    {
+        await using var root = new TempRoot();
+        var studio = new FakeStudio(new VoiceLibrary(Path.Combine(root.Path, "voices")));
+        var mlx = new FakeMlx();
+        var host = await TestHost.StartAsync(root.Path, new ManualTtsEngine(), voices: studio, mlxAudio: mlx, modelCached: _ => false);
+        await using var client = await host.ConnectInProcessAsync();
+
+        Assert.False((await client.GetOmniVoiceStatusAsync()).OmniVoice!.Installed);
+        Assert.True((await client.UpdateSettingsAsync(tts: new TtsSettingsDto
+        {
+            OmniVoice = new OmniVoiceTtsSettingsDto { Model = "custom/OmniVoice" },
+        })).Ok);
+
+        var installed = await client.InstallOmniVoiceAsync();
+        Assert.True(installed.Ok);
+        Assert.True(installed.OmniVoice!.Installed);
+        Assert.Equal(1, mlx.Calls);
+        Assert.Equal(1, studio.Prepared);
+        Assert.Equal("custom/OmniVoice", studio.Settings!.Model);
+        Assert.True(installed.OmniVoice.ModelDownloaded);
+        Assert.True((await client.GetOmniVoiceStatusAsync()).OmniVoice!.Installed);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task InstallOmniVoice_SkipsTheDownload_WhenTheModelIsAlreadyCached()
+    {
+        await using var root = new TempRoot();
+        var studio = new FakeStudio(new VoiceLibrary(Path.Combine(root.Path, "voices")));
+        var mlx = new FakeMlx();
+        var host = await TestHost.StartAsync(
+            root.Path,
+            new ManualTtsEngine(),
+            voices: studio,
+            mlxAudio: mlx,
+            modelCached: model => model == "custom/OmniVoice");
+        await using var client = await host.ConnectInProcessAsync();
+
+        Assert.True((await client.UpdateSettingsAsync(tts: new TtsSettingsDto
+        {
+            OmniVoice = new OmniVoiceTtsSettingsDto { Model = "custom/OmniVoice" },
+        })).Ok);
+
+        var installed = await client.InstallOmniVoiceAsync();
+        Assert.True(installed.Ok);
+        Assert.True(installed.OmniVoice!.Installed);
+        Assert.True(installed.OmniVoice.ModelDownloaded);
+        Assert.Equal(0, studio.Prepared);
+        Assert.True((await client.GetOmniVoiceStatusAsync()).OmniVoice!.ModelDownloaded);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task InstallOmniVoice_WithoutAnInstaller_IsRejected()
+    {
+        await using var root = new TempRoot();
+        var host = await TestHost.StartAsync(root.Path, new ManualTtsEngine());
+        await using var client = await host.ConnectInProcessAsync();
+
+        Assert.False((await client.GetOmniVoiceStatusAsync()).OmniVoice!.Installed);
+        Assert.Equal(ProtocolErrors.InvalidState, (await client.InstallOmniVoiceAsync()).Error);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task InstallOmniVoice_WhenTheServerInstallFails_DoesNotLoadTheModel()
+    {
+        await using var root = new TempRoot();
+        var studio = new FakeStudio(new VoiceLibrary(Path.Combine(root.Path, "voices")));
+        var mlx = new FakeMlx { Error = new InvalidOperationException("uv failed") };
+        var host = await TestHost.StartAsync(root.Path, new ManualTtsEngine(), voices: studio, mlxAudio: mlx);
+        await using var client = await host.ConnectInProcessAsync();
+
+        var failed = await client.InstallOmniVoiceAsync();
+        Assert.Equal(ProtocolErrors.Unavailable, failed.Error);
+        Assert.Contains("uv failed", failed.Detail);
+        Assert.False(failed.OmniVoice!.Installed);
+        Assert.Equal(0, studio.Prepared);
+        await host.DisposeAsync();
+    }
+
+    sealed class FakeMlx : IMlxAudioInstaller
+    {
+        public bool IsInstalled { get; private set; }
+        public Exception? Error { get; set; }
+        public int Calls { get; private set; }
+
+        public Task InstallAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Error is { } error)
+                throw error;
+            IsInstalled = true;
+            return Task.CompletedTask;
+        }
+    }
+
     sealed class FakeStudio(VoiceLibrary library) : IVoiceStudio
     {
         public OmniVoiceTtsSettingsDto? Settings { get; private set; }
@@ -417,6 +516,17 @@ public class VoiceCommandsTests
             if (Error is { } error)
                 throw error;
             return library.AddDraft(OmniVoiceEngineTests.Clip(), "Образец.");
+        }
+
+        public int Prepared { get; private set; }
+
+        public Task PrepareAsync(OmniVoiceTtsSettingsDto settings, CancellationToken cancellationToken)
+        {
+            Prepared++;
+            Settings = settings;
+            if (Error is { } error)
+                throw error;
+            return Task.CompletedTask;
         }
 
         public VoiceDto? Save(string draftId, string name) => library.Save(draftId, name);

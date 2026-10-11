@@ -15,6 +15,7 @@ public partial class OmniVoicePage : SettingsPage
     VoiceDto? _draft;
     AvAudioPlayer? _preview;
     bool _confirmDelete;
+    bool _installing;
 
     public OmniVoicePage()
     {
@@ -31,6 +32,7 @@ public partial class OmniVoicePage : SettingsPage
         NewVoiceButton.Click += async (_, _) => await NewVoiceAsync();
         SaveDraftButton.Click += async (_, _) => await SaveDraftAsync();
         PlayDraftButton.Click += (_, _) => Play(_draft);
+        InstallButton.Click += async (_, _) => await InstallAsync();
         Show(_shown.Value);
     }
 
@@ -67,6 +69,19 @@ public partial class OmniVoicePage : SettingsPage
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log($"Voice list failed: {ex.Message}");
+        }
+
+        if (_installing)
+            return;
+        try
+        {
+            var status = await Client.GetOmniVoiceStatusAsync();
+            if (status is { Ok: true, OmniVoice: { } omni })
+                ApplyInstallStatus(omni);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log($"OmniVoice status failed: {ex.Message}");
         }
     }
 
@@ -133,6 +148,56 @@ public partial class OmniVoicePage : SettingsPage
         DeleteButton.IsEnabled = voice is { BuiltIn: false };
         DeleteButton.Content = _confirmDelete ? "Точно удалить?" : "Удалить";
     }
+
+    async Task InstallAsync()
+    {
+        if (_installing)
+            return;
+
+        _installing = true;
+        InstallButton.IsEnabled = false;
+        InstallButton.Content = "Устанавливаю…";
+        InstallError.IsVisible = false;
+        InstallStatus.Text = "Устанавливаю… Первый раз это может занять несколько минут.";
+        try
+        {
+            var result = await Client.InstallOmniVoiceAsync();
+            if (result.Ok)
+            {
+                if (result.OmniVoice is { } done)
+                    ApplyInstallStatus(done);
+                return;
+            }
+
+            Log($"OmniVoice install failed: {result.Error} {result.Detail}");
+            if (result.OmniVoice is { } status)
+                ApplyInstallStatus(status);
+            InstallError.Text = MissingUv(result.Detail)
+                ? "Не найден uv. Установите его командой brew install uv и нажмите кнопку снова."
+                : "Не удалось установить: " + (string.IsNullOrWhiteSpace(result.Detail) ? result.Error : result.Detail);
+            InstallError.IsVisible = true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log($"OmniVoice install failed: {ex}");
+            InstallError.Text = "Не удалось установить: " + ex.Message;
+            InstallError.IsVisible = true;
+        }
+        finally
+        {
+            _installing = false;
+            InstallButton.IsEnabled = true;
+            InstallButton.Content = "Установить OmniVoice";
+        }
+    }
+
+    void ApplyInstallStatus(OmniVoiceStatusDto status) =>
+        InstallStatus.Text = status.Installed && status.ModelDownloaded ? "Установлен"
+            : status.Installed ? "Сервер установлен"
+            : "Не установлен";
+
+    static bool MissingUv(string? detail) =>
+        detail?.Contains("uv is not installed", StringComparison.Ordinal) == true;
 
     void Play(VoiceDto? voice)
     {

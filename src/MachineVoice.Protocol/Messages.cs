@@ -162,6 +162,21 @@ public sealed class DeleteVoiceCommand : ClientMessage
     public string VoiceId { get; init; } = "";
 }
 
+/// <summary>Whether mlx_audio.server is installed, in <see cref="ResultMessage.OmniVoice"/>.</summary>
+public sealed class GetOmniVoiceStatusCommand : ClientMessage
+{
+    public string Type { get; init; } = "getOmniVoiceStatus";
+}
+
+/// <summary>
+/// Installs mlx_audio.server when it is missing and loads the OmniVoice model, downloading it the first time.
+/// The first run takes minutes. The outcome is in <see cref="ResultMessage.OmniVoice"/>.
+/// </summary>
+public sealed class InstallOmniVoiceCommand : ClientMessage
+{
+    public string Type { get; init; } = "installOmniVoice";
+}
+
 public abstract class ServerMessage
 {
     public int Version { get; init; } = ProtocolVersion.Current;
@@ -179,6 +194,7 @@ public sealed class ResultMessage : ServerMessage
     public McpStatusDto? Mcp { get; init; }
     public List<VoiceDto>? Voices { get; init; }
     public VoiceDto? Voice { get; init; }
+    public OmniVoiceStatusDto? OmniVoice { get; init; }
 
     /// <summary>Why the command failed, for a person to read; set when the cause is outside MachineVoice.</summary>
     public string? Detail { get; init; }

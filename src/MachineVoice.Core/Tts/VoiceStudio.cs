@@ -10,6 +10,9 @@ public interface IVoiceStudio
     /// <summary>A sample in a new random voice, kept as a draft until it is saved. Throws when the server fails.</summary>
     Task<VoiceDto> CreateDraftAsync(OmniVoiceTtsSettingsDto settings, CancellationToken cancellationToken);
 
+    /// <summary>Starts the server and loads the model, downloading it the first time. Throws when that fails.</summary>
+    Task PrepareAsync(OmniVoiceTtsSettingsDto settings, CancellationToken cancellationToken);
+
     /// <summary>Null when there is no such draft.</summary>
     VoiceDto? Save(string draftId, string name);
 
@@ -31,6 +34,9 @@ public sealed class VoiceStudio(VoiceLibrary library, OmniVoiceSynthesizer synth
         var wav = await synthesizer.SampleAsync(settings, SampleText, cancellationToken).ConfigureAwait(false);
         return library.AddDraft(wav, SampleText);
     }
+
+    public Task PrepareAsync(OmniVoiceTtsSettingsDto settings, CancellationToken cancellationToken) =>
+        synthesizer.PrepareAsync(settings, cancellationToken);
 
     public VoiceDto? Save(string draftId, string name) => library.Save(draftId, name);
 

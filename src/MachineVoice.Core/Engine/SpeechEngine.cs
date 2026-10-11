@@ -18,6 +18,8 @@ sealed class SpeechEngine : IAsyncDisposable
 
     readonly ITtsEngine _tts;
     readonly IVoiceStudio? _voices;
+    readonly IMlxAudioInstaller? _mlx;
+    readonly Func<string, bool> _modelCached;
     readonly HttpClient _http;
     readonly Action<string>? _log;
     readonly Channel<Work> _work = Channel.CreateUnbounded<Work>();
@@ -59,9 +61,13 @@ sealed class SpeechEngine : IAsyncDisposable
         HttpMessageHandler? httpHandler,
         string? mcpServerBinary,
         Action<string>? log,
-        IVoiceStudio? voices = null)
+        IVoiceStudio? voices = null,
+        IMlxAudioInstaller? mlxAudio = null,
+        Func<string, bool>? modelCached = null)
     {
         _voices = voices;
+        _mlx = mlxAudio;
+        _modelCached = modelCached ?? (static model => HuggingFaceCache.IsDownloaded(model));
         _inbox = new Inbox(root);
         _history = new HistoryStore(Path.Combine(root, AppLayout.HistoryFileName), log);
         _settingsStore = new SettingsStore(Path.Combine(root, AppLayout.SettingsFileName), log);
@@ -214,6 +220,9 @@ sealed class SpeechEngine : IAsyncDisposable
                 break;
             case CommandWork { Command: CreateVoiceCommand } create:
                 CreateVoice(create);
+                break;
+            case CommandWork { Command: InstallOmniVoiceCommand } install:
+                InstallOmniVoice(install);
                 break;
             case CommandWork command:
                 command.Result.TrySetResult(Execute(command.Command));
@@ -585,6 +594,7 @@ sealed class SpeechEngine : IAsyncDisposable
             ListVoicesCommand => ListVoices(command.Id),
             SaveVoiceCommand save => SaveVoice(command.Id, save.DraftId, save.Name),
             DeleteVoiceCommand delete => DeleteVoice(command.Id, delete.VoiceId),
+            GetOmniVoiceStatusCommand => OmniVoiceStatus(command.Id),
             _ => Fail(command.Id, ProtocolErrors.UnknownCommand),
         };
     }
@@ -631,6 +641,80 @@ sealed class SpeechEngine : IAsyncDisposable
             }
         }, CancellationToken.None);
     }
+
+    /// <summary>
+    /// Installing the server and downloading the model takes minutes, so it runs off the loop and answers when done.
+    /// </summary>
+    void InstallOmniVoice(CommandWork work)
+    {
+        var command = work.Command;
+        if (Rejected(command) is { } rejected)
+        {
+            work.Result.TrySetResult(rejected);
+            return;
+        }
+
+        if (_mlx is not { } mlx)
+        {
+            work.Result.TrySetResult(Fail(command.Id, ProtocolErrors.InvalidState));
+            return;
+        }
+
+        var settings = _settings.Tts.OmniVoice;
+        var voices = _voices;
+        var shutdown = _shutdown.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await mlx.InstallAsync(shutdown).ConfigureAwait(false);
+                var downloaded = _modelCached(settings.Model);
+                if (downloaded)
+                    _log?.Invoke($"OmniVoice model is already downloaded: {settings.Model}");
+                else if (voices is not null)
+                {
+                    await voices.PrepareAsync(settings, shutdown).ConfigureAwait(false);
+                    downloaded = true;
+                }
+
+                work.Result.TrySetResult(new ResultMessage
+                {
+                    Id = command.Id,
+                    Ok = true,
+                    OmniVoice = Status(mlx.IsInstalled, downloaded),
+                });
+            }
+            catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+            {
+                work.Result.TrySetCanceled(shutdown);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                _log?.Invoke($"OmniVoice install failed: {ex.Message}");
+                work.Result.TrySetResult(new ResultMessage
+                {
+                    Id = command.Id,
+                    Ok = false,
+                    Error = ProtocolErrors.Unavailable,
+                    Detail = ex.Message,
+                    OmniVoice = Status(mlx.IsInstalled, _modelCached(settings.Model)),
+                });
+            }
+        }, CancellationToken.None);
+    }
+
+    ResultMessage OmniVoiceStatus(string id) => new()
+    {
+        Id = id,
+        Ok = true,
+        OmniVoice = Status(_mlx?.IsInstalled == true, _modelCached(_settings.Tts.OmniVoice.Model)),
+    };
+
+    static OmniVoiceStatusDto Status(bool installed, bool modelDownloaded) => new()
+    {
+        Installed = installed,
+        ModelDownloaded = modelDownloaded,
+    };
 
     ResultMessage ListVoices(string id) =>
         _voices is null

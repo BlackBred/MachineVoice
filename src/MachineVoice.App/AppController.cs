@@ -89,6 +89,7 @@ sealed class AppController
                 McpServerBinary = _options.McpServerBinary,
                 Log = _log.Write,
                 Voices = new VoiceStudio(voices, omniVoice),
+                MlxAudio = new MlxAudioInstaller(_log.Write),
             });
             _client = await _host.ConnectInProcessAsync();
             var snapshot = await _client.GetSnapshotAsync();

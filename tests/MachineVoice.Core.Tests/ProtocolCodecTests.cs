@@ -52,6 +52,18 @@ public class ProtocolCodecTests
             },
         });
         Assert.Contains("\"legacySpeaker\":true", legacy);
+
+        var omni = ProtocolCodec.Write(new ResultMessage
+        {
+            Id = "1",
+            Ok = true,
+            OmniVoice = new OmniVoiceStatusDto { Installed = true, ModelDownloaded = true },
+        });
+        Assert.Contains("\"installed\":true", omni);
+        Assert.Contains("\"modelDownloaded\":true", omni);
+        var omniStatus = Assert.IsType<ResultMessage>(ProtocolCodec.ReadServer(omni)).OmniVoice!;
+        Assert.True(omniStatus.Installed);
+        Assert.True(omniStatus.ModelDownloaded);
     }
 
     [Fact]
@@ -94,6 +106,8 @@ public class ProtocolCodecTests
             new DisconnectSourceCommand { Version = 1, Id = "x", Source = "cursor" },
             new GetSourceStatusCommand { Version = 1, Id = "t", Source = "cursor" },
             new GetSnapshotCommand { Version = 1, Id = "n" },
+            new GetOmniVoiceStatusCommand { Version = 1, Id = "os" },
+            new InstallOmniVoiceCommand { Version = 1, Id = "oi" },
         ];
 
         foreach (var command in commands)

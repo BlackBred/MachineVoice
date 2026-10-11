@@ -31,6 +31,8 @@ public static class ProtocolCodec
         CreateVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.CreateVoiceCommand),
         SaveVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.SaveVoiceCommand),
         DeleteVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.DeleteVoiceCommand),
+        GetOmniVoiceStatusCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.GetOmniVoiceStatusCommand),
+        InstallOmniVoiceCommand m => JsonSerializer.Serialize(m, ProtocolJsonContext.Default.InstallOmniVoiceCommand),
         _ => throw new ArgumentOutOfRangeException(nameof(message), message.GetType().Name, "Unknown command."),
     };
 
@@ -91,6 +93,8 @@ public static class ProtocolCodec
                 "createVoice" => root.Deserialize(ProtocolJsonContext.Default.CreateVoiceCommand),
                 "saveVoice" => root.Deserialize(ProtocolJsonContext.Default.SaveVoiceCommand),
                 "deleteVoice" => root.Deserialize(ProtocolJsonContext.Default.DeleteVoiceCommand),
+                "getOmniVoiceStatus" => root.Deserialize(ProtocolJsonContext.Default.GetOmniVoiceStatusCommand),
+                "installOmniVoice" => root.Deserialize(ProtocolJsonContext.Default.InstallOmniVoiceCommand),
                 _ => null,
             };
 

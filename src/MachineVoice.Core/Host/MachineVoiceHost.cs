@@ -22,6 +22,12 @@ public sealed class MachineVoiceOptions
 
     /// <summary>The OmniVoice voices; without it the voice commands fail with invalid-state.</summary>
     public IVoiceStudio? Voices { get; init; }
+
+    /// <summary>Installs mlx_audio.server. Without it the OmniVoice install command fails with invalid-state.</summary>
+    public IMlxAudioInstaller? MlxAudio { get; init; }
+
+    /// <summary>Whether a model is already in the local cache. Defaults to the Hugging Face hub cache.</summary>
+    public Func<string, bool>? ModelCached { get; init; }
 }
 
 public sealed class MachineVoiceHost : IAsyncDisposable
@@ -71,7 +77,9 @@ public sealed class MachineVoiceHost : IAsyncDisposable
             options.HttpHandler,
             options.McpServerBinary,
             options.Log,
-            options.Voices);
+            options.Voices,
+            options.MlxAudio,
+            options.ModelCached);
         IngestServer? ingest = null;
         ControlServer? control = null;
         try

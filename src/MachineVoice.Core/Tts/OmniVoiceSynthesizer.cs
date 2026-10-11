@@ -30,6 +30,10 @@ public sealed class OmniVoiceSynthesizer(VoiceLibrary voices, ISpeechServer? ser
     public Task<byte[]> SampleAsync(OmniVoiceTtsSettingsDto settings, string text, CancellationToken cancellationToken) =>
         SynthesizeOnceAsync(settings, new SpeechRequest { Model = settings.Model, Input = text, LangCode = settings.Language }, cancellationToken);
 
+    /// <summary>Starts the server and loads the model. The first call downloads it (about 2 GB).</summary>
+    public Task PrepareAsync(OmniVoiceTtsSettingsDto settings, CancellationToken cancellationToken) =>
+        EnsureLoadedAsync(settings, cancellationToken);
+
     private protected override byte[] Clean(byte[] wav) => WavFile.TrimStart(wav, Lead, Click);
 
     private protected override OmniVoiceTtsSettingsDto Select(TtsSettingsDto settings) => settings.OmniVoice ?? new OmniVoiceTtsSettingsDto();

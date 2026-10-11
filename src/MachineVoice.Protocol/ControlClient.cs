@@ -78,6 +78,12 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default) =>
         SendAsync(new DeleteVoiceCommand { Version = ProtocolVersion.Current, Id = NewId(), VoiceId = voiceId }, cancellationToken);
 
+    public Task<ResultMessage> GetOmniVoiceStatusAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new GetOmniVoiceStatusCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
+    public Task<ResultMessage> InstallOmniVoiceAsync(CancellationToken cancellationToken = default) =>
+        SendAsync(new InstallOmniVoiceCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
+
     public abstract IAsyncEnumerable<EventMessage> EventsAsync(CancellationToken cancellationToken = default);
 
     public abstract ValueTask DisposeAsync();

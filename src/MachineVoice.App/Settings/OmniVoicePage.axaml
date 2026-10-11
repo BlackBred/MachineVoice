@@ -6,6 +6,20 @@
     <TextBlock Classes="title" Text="OmniVoice" />
 
     <StackPanel Spacing="8">
+      <Border Classes="card">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <TextBlock Text="Установка" FontWeight="SemiBold" />
+            <TextBlock x:Name="InstallStatus" Classes="hint" Text="Проверяется…" />
+          </StackPanel>
+          <Button x:Name="InstallButton" Grid.Column="1" VerticalAlignment="Center" Content="Установить OmniVoice" />
+        </Grid>
+      </Border>
+      <TextBlock Classes="hint" Text="Ставит mlx-audio и скачивает модель (около 2 ГБ), если её ещё нет. Нужна программа uv." />
+      <TextBlock x:Name="InstallError" Classes="error" IsVisible="False" />
+    </StackPanel>
+
+    <StackPanel Spacing="8">
       <TextBlock Classes="h" Text="Голос" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <ComboBox x:Name="Voice" Width="290" />

@@ -216,6 +216,16 @@ public sealed class SourceStatusDto
     public bool LegacySpeaker { get; init; }
 }
 
+/// <summary>Whether OmniVoice's server is installed and its weights are already in the local cache.</summary>
+public sealed class OmniVoiceStatusDto
+{
+    /// <summary>mlx_audio.server is on disk.</summary>
+    public bool Installed { get; init; }
+
+    /// <summary>The model weights are in the Hugging Face cache, so nothing has to be downloaded.</summary>
+    public bool ModelDownloaded { get; init; }
+}
+
 /// <summary>The MachineVoice entry in ~/.cursor/mcp.json.</summary>
 public sealed class McpStatusDto
 {

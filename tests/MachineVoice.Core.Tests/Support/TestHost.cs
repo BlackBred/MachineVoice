@@ -34,7 +34,9 @@ static class TestHost
         ITtsEngine tts,
         HttpMessageHandler? http = null,
         string? mcpBinary = null,
-        IVoiceStudio? voices = null) =>
+        IVoiceStudio? voices = null,
+        IMlxAudioInstaller? mlxAudio = null,
+        Func<string, bool>? modelCached = null) =>
         MachineVoiceHost.StartAsync(new MachineVoiceOptions
         {
             RootDirectory = root,
@@ -43,5 +45,7 @@ static class TestHost
             HttpHandler = http,
             McpServerBinary = mcpBinary,
             Voices = voices,
+            MlxAudio = mlxAudio,
+            ModelCached = modelCached,
         });
 }

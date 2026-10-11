@@ -41,14 +41,17 @@ public sealed class MlxAudioServer : ISpeechServer
     }
 
     /// <summary>The command in the usual install locations; apps started from Finder do not get the shell's PATH.</summary>
-    public static string? FindCommand()
+    public static string? FindCommand() => FindExecutable(Command);
+
+    /// <summary>Looks up <paramref name="fileName"/> the same way as <see cref="FindCommand"/>.</summary>
+    public static string? FindExecutable(string fileName)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var directories = (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(':', StringSplitOptions.RemoveEmptyEntries)
             .Concat(["/usr/local/bin", "/opt/homebrew/bin", Path.Combine(home, ".local", "bin")]);
         return directories
-            .Select(directory => Path.Combine(directory, Command))
+            .Select(directory => Path.Combine(directory, fileName))
             .FirstOrDefault(File.Exists);
     }
 
@@ -136,7 +139,7 @@ public sealed class MlxAudioServer : ISpeechServer
     async Task StartAsync(int port, CancellationToken cancellationToken)
     {
         var command = FindCommand() ?? throw new FileNotFoundException(
-            $"{Command} is not installed: uv tool install --python 3.12 \"mlx-audio[tts,server]\"");
+            $"{Command} is not installed: {MlxAudioPackage.InstallCommand}");
 
         // An app started from Finder runs in "/", which is read-only; the server creates its log directory there.
         var start = new ProcessStartInfo(command)
