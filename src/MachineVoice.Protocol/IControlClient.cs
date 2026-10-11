@@ -18,8 +18,7 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Speaks <paramref name="text"/> now, in any mode. The response being read is skipped.
-    /// <paramref name="text"/> is the clipboard contents; this does not read the pasteboard.
+    /// Puts <paramref name="text"/> into the inbox as a clipboard reading. Does not read or write the pasteboard.
     /// </summary>
     Task<ResultMessage> SpeakClipboardAsync(string text, CancellationToken cancellationToken = default);
     Task<ResultMessage> DismissAsync(string itemId, CancellationToken cancellationToken = default);
@@ -32,6 +31,7 @@ public interface IControlClient : IAsyncDisposable
         TtsSettingsDto? tts = null,
         QueueOrder? order = null,
         HeadingMode? heading = null,
+        HotkeySettingsDto? hotkeys = null,
         CancellationToken cancellationToken = default);
     Task<ResultMessage> ConnectSourceAsync(string source, CancellationToken cancellationToken = default);
     Task<ResultMessage> DisconnectSourceAsync(string source, CancellationToken cancellationToken = default);

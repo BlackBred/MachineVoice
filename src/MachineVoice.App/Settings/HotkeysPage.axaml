@@ -1,0 +1,25 @@
+<local:SettingsPage xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:MachineVoice.App"
+                    x:Class="MachineVoice.App.HotkeysPage"
+                    Focusable="True">
+  <StackPanel Spacing="22">
+    <TextBlock Classes="title" Text="Горячие клавиши" />
+
+    <StackPanel Spacing="8">
+      <TextBlock Classes="h" Text="Прочитать буфер обмена" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <TextBlock x:Name="ChordText" VerticalAlignment="Center" />
+        <Button x:Name="RecordButton" Content="Записать" />
+      </StackPanel>
+      <TextBlock x:Name="RecordHint" Classes="hint" Text="Нажмите «Записать» и сочетание. Нужен хотя бы один модификатор, иначе клавиша перехватит набор текста." />
+      <CheckBox x:Name="Interrupt" Content="Прерывать текущую озвучку" />
+      <TextBlock Classes="hint" Text="Без галки буфер встаёт в очередь и звучащий ответ дочитывается. С галкой буфер читается сразу, а прерванный ответ продолжается с того же места, когда буфер дочитан или пропущен." />
+    </StackPanel>
+
+    <StackPanel Classes="savebar">
+      <Button x:Name="SaveButton" Classes="accent" Content="Сохранить" />
+      <TextBlock x:Name="SaveStatus" Classes="hint" VerticalAlignment="Center" />
+    </StackPanel>
+  </StackPanel>
+</local:SettingsPage>

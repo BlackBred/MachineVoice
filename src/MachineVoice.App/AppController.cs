@@ -37,6 +37,8 @@ sealed class AppController
     OverlayWindow? _overlay;
     SettingsWindow? _settings;
     bool _quitting;
+    int _clipboardKey = -1;
+    int _clipboardModifiers = -1;
 
     public AppController(Application application, IClassicDesktopStyleApplicationLifetime desktop, LaunchOptions options)
     {
@@ -154,10 +156,7 @@ sealed class AppController
         _tray.PauseResumeRequested += PauseResume;
         _tray.SkipRequested += () => Send(client => client.SkipAsync());
         _tray.ClipboardRequested += SpeakClipboard;
-        var hotkey = CarbonHotkeys.Register(CarbonHotkeys.KeyV, CarbonHotkeys.Control | CarbonHotkeys.Option, SpeakClipboard);
-        _tray.UseClipboardShortcut(hotkey == 0);
-        if (hotkey != 0)
-            _log.Write($"Clipboard hotkey was not registered ({hotkey}).");
+        ApplyClipboardHotkey(_state.Settings.Hotkeys);
         _tray.ModeRequested += mode => Send(client => client.SetModeAsync(mode));
         _tray.ListenRequested += id => Send(client => client.ListenAsync(id));
         _tray.OpenChatRequested += id => Send(client => client.OpenChatAsync(id));
@@ -191,6 +190,9 @@ sealed class AppController
             OpenChat(chat);
             return;
         }
+
+        if (message is SettingsChangedEvent settings)
+            ApplyClipboardHotkey(settings.Settings.Hotkeys);
 
         if (!_state.Apply(message))
             return;
@@ -268,6 +270,29 @@ sealed class AppController
         }
 
         Send(client => client.SpeakClipboardAsync(text));
+    }
+
+    void ApplyClipboardHotkey(HotkeySettingsDto? settings)
+    {
+        if (_tray is null)
+            return;
+
+        var chord = HotkeyRules.Canonical(settings).Clipboard;
+        if (chord.KeyCode == _clipboardKey && chord.Modifiers == _clipboardModifiers)
+            return;
+
+        CarbonHotkeys.UnregisterAll();
+        var status = CarbonHotkeys.Register((uint)chord.KeyCode, (uint)chord.Modifiers, SpeakClipboard);
+        _clipboardKey = chord.KeyCode;
+        _clipboardModifiers = chord.Modifiers;
+        if (status == 0)
+        {
+            _tray.SetClipboardShortcut(HotkeyText.Format(chord.KeyCode, chord.Modifiers));
+            return;
+        }
+
+        _tray.SetClipboardShortcut(null);
+        _log.Write($"Clipboard hotkey was not registered ({status}).");
     }
 
     void PauseResume()

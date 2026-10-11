@@ -41,8 +41,9 @@ public abstract class ControlClient : IControlClient
         TtsSettingsDto? tts = null,
         QueueOrder? order = null,
         HeadingMode? heading = null,
+        HotkeySettingsDto? hotkeys = null,
         CancellationToken cancellationToken = default) =>
-        SendAsync(new UpdateSettingsCommand { Version = ProtocolVersion.Current, Id = NewId(), Mode = mode, Order = order, Heading = heading, Summary = summary, Tts = tts }, cancellationToken);
+        SendAsync(new UpdateSettingsCommand { Version = ProtocolVersion.Current, Id = NewId(), Mode = mode, Order = order, Heading = heading, Summary = summary, Tts = tts, Hotkeys = hotkeys }, cancellationToken);
 
     public Task<ResultMessage> ConnectSourceAsync(string source, CancellationToken cancellationToken = default) =>
         SendAsync(new ConnectSourceCommand { Version = ProtocolVersion.Current, Id = NewId(), Source = source }, cancellationToken);

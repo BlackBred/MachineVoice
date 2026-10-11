@@ -69,9 +69,9 @@ sealed class TrayMenu : IDisposable
     public event Action? SkipRequested;
     public event Action? ClipboardRequested;
 
-    /// <summary>Shows ⌃⌥V once the global shortcut is registered. The menu item works either way.</summary>
-    public void UseClipboardShortcut(bool available) =>
-        _clipboard.Header = available ? "Прочитать буфер обмена    ⌃⌥V" : "Прочитать буфер обмена";
+    /// <summary>Shows the registered chord. The menu item works either way.</summary>
+    public void SetClipboardShortcut(string? chord) =>
+        _clipboard.Header = chord is null ? "Прочитать буфер обмена" : "Прочитать буфер обмена    " + chord;
     public event Action<PlaybackMode>? ModeRequested;
     public event Action<string>? ListenRequested;
     public event Action<string>? OpenChatRequested;

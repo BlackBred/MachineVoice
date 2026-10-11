@@ -39,6 +39,46 @@ public sealed class SettingsDto
     public List<SourceSettingDto> Sources { get; init; } = [];
     public SummarySettingsDto Summary { get; init; } = new();
     public TtsSettingsDto Tts { get; init; } = new();
+    public HotkeySettingsDto Hotkeys { get; init; } = new();
+}
+
+/// <summary>The clipboard hotkey and whether that reading cuts off whatever is playing.</summary>
+public sealed class HotkeySettingsDto
+{
+    public bool Interrupt { get; init; }
+    public HotkeyChordDto Clipboard { get; init; } = new();
+}
+
+/// <summary>A Carbon hotkey: macOS virtual key code and modifier bits.</summary>
+public sealed class HotkeyChordDto
+{
+    /// <summary>kVK_ANSI_V.</summary>
+    public const int DefaultKeyCode = 0x09;
+
+    /// <summary>Control and Option.</summary>
+    public const int DefaultModifiers = 0x1000 | 0x0800;
+
+    public int KeyCode { get; init; } = DefaultKeyCode;
+    public int Modifiers { get; init; } = DefaultModifiers;
+}
+
+public static class HotkeyRules
+{
+    public const int KnownModifiers = 0x0100 | 0x0200 | 0x0800 | 0x1000;
+
+    public static HotkeySettingsDto Canonical(HotkeySettingsDto? settings)
+    {
+        var chord = Valid(settings?.Clipboard) ? settings!.Clipboard : new HotkeyChordDto();
+        return new HotkeySettingsDto
+        {
+            Interrupt = settings?.Interrupt ?? false,
+            Clipboard = new HotkeyChordDto { KeyCode = chord.KeyCode, Modifiers = chord.Modifiers },
+        };
+    }
+
+    public static bool Valid(HotkeyChordDto? chord) =>
+        chord is { KeyCode: >= 0 and <= 0x7F, Modifiers: > 0 }
+        && (chord.Modifiers & ~KnownModifiers) == 0;
 }
 
 public sealed class TtsSettingsDto

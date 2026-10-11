@@ -31,8 +31,11 @@ sealed class SpeechEngine : IAsyncDisposable
     PlaybackMode _mode = PlaybackMode.Auto;
     QueueOrder _order = QueueOrder.Lifo;
     HeadingMode _heading = HeadingMode.Always;
+    HotkeySettingsDto _hotkeys = HotkeyRules.Canonical(null);
     PlayerState _player = PlayerState.Idle;
     SpeechItem? _current;
+    readonly Stack<HeldSpeech> _held = new();
+    double _position;
     string? _confirmationItemId;
 
     // The heading of the response that started last, whether it was read or not.
@@ -90,6 +93,7 @@ sealed class SpeechEngine : IAsyncDisposable
         _mode = _settings.Mode;
         _order = _settings.Order;
         _heading = _settings.Heading;
+        _hotkeys = HotkeyRules.Canonical(_settings.Hotkeys);
         _settings = Settings(_settings.Sources, _settings.Summary ?? new SummarySettingsDto(), TtsRules.Loaded(_settings.Tts));
         ApplyTts();
         foreach (var (generation, turn) in _turnStore.Load())
@@ -723,7 +727,8 @@ sealed class SpeechEngine : IAsyncDisposable
             _player = PlayerState.Idle;
             Publish(new PlayerStateEvent { State = PlayerState.Idle });
             Archive(item, SpeechOutcome.Skipped);
-            Advance();
+            if (!ResumeHeld())
+                Advance();
             return Ok(id);
         }
 
@@ -770,8 +775,10 @@ sealed class SpeechEngine : IAsyncDisposable
     }
 
     /// <summary>
-    /// Reads the clipboard text now. A confirmation toast stays up and returns when this finishes.
-    /// The text is kept in the inbox, like any other response, so a crash mid-reading does not drop it.
+    /// Stores the clipboard text as an inbox file. Nothing is written back to the pasteboard.
+    /// With nothing playing, it starts at once and the queue waits. While something is playing, it joins the
+    /// queue in the current order, unless interruption is on: then this plays now and the interrupted reading
+    /// continues afterwards from the same position.
     /// </summary>
     ResultMessage SpeakClipboard(string id, string text)
     {
@@ -802,18 +809,73 @@ sealed class SpeechEngine : IAsyncDisposable
         Prepare(item);
         Remember(item);
 
-        if (_current is { } playing)
+        if (_player is not (PlayerState.Speaking or PlayerState.Paused) || _current is null)
         {
-            _tts.Stop();
+            _hold = false;
+            BeginSpeak(item);
+            return Ok(id);
+        }
+
+        if (_hotkeys.Interrupt)
+        {
+            HoldCurrent();
+            _hold = false;
+            BeginSpeak(item);
+            if (_current is null)
+                ResumeHeld();
+            return Ok(id);
+        }
+
+        Policy.Enqueue(_queue, item);
+        PublishQueue();
+        return Ok(id);
+    }
+
+    /// <summary>The reading in progress steps aside. It stays out of history and out of the queue.</summary>
+    void HoldCurrent()
+    {
+        if (_current is not { } playing)
+            return;
+
+        var position = _tts is ISeekableTtsEngine && _position > 0 ? _position : 0;
+        _held.Push(new HeldSpeech(playing, position));
+        _tts.Stop();
+        _current = null;
+        _player = PlayerState.Idle;
+        Publish(new PlayerStateEvent { State = PlayerState.Idle });
+    }
+
+    /// <summary>Continues the reading that was set aside, from the same second when the engine can seek.</summary>
+    bool ResumeHeld()
+    {
+        if (_held.Count == 0)
+            return false;
+
+        var held = _held.Pop();
+        _nearEnd = false;
+        _current = held.Item;
+        _position = held.Position;
+        try
+        {
+            _tts.Speak(held.Item.Id, held.Item.Speech ?? held.Item.Text);
+            if (held.Position > 0 && _tts is ISeekableTtsEngine seekable)
+                seekable.Seek(held.Position);
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"TTS speak failed: {ex.Message}");
             _current = null;
             _player = PlayerState.Idle;
+            _hold = true;
             Publish(new PlayerStateEvent { State = PlayerState.Idle });
-            Archive(playing, SpeechOutcome.Skipped);
+            Archive(held.Item, SpeechOutcome.Stopped);
+            return true;
         }
 
         _hold = false;
-        BeginSpeak(item);
-        return Ok(id);
+        _player = PlayerState.Speaking;
+        Publish(new PlayerStateEvent { State = PlayerState.Speaking, ItemId = held.Item.Id });
+        return true;
     }
 
     ResultMessage Dismiss(string id, string itemId)
@@ -885,7 +947,7 @@ sealed class SpeechEngine : IAsyncDisposable
 
     ResultMessage UpdateSettings(string id, UpdateSettingsCommand update)
     {
-        if (update.Mode is null && update.Order is null && update.Heading is null && update.Summary is null && update.Tts is null)
+        if (update.Mode is null && update.Order is null && update.Heading is null && update.Summary is null && update.Tts is null && update.Hotkeys is null)
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Order is { } requested && !Enum.IsDefined(requested))
             return Fail(id, ProtocolErrors.InvalidArgument);
@@ -894,6 +956,8 @@ sealed class SpeechEngine : IAsyncDisposable
         if (update.Summary is not null && SummaryRules.Validate(update.Summary) is not null)
             return Fail(id, ProtocolErrors.InvalidArgument);
         if (update.Tts is not null && TtsRules.Validate(update.Tts) is not null)
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        if (update.Hotkeys is not null && !HotkeyRules.Valid(update.Hotkeys.Clipboard))
             return Fail(id, ProtocolErrors.InvalidArgument);
 
         var changed = false;
@@ -927,6 +991,17 @@ sealed class SpeechEngine : IAsyncDisposable
             _settings = Settings(_settings.Sources, _settings.Summary, TtsRules.Canonical(update.Tts));
             ApplyTts();
             changed = true;
+        }
+
+        if (update.Hotkeys is not null)
+        {
+            var hotkeys = HotkeyRules.Canonical(update.Hotkeys);
+            if (hotkeys.Interrupt != _hotkeys.Interrupt || hotkeys.Clipboard.KeyCode != _hotkeys.Clipboard.KeyCode || hotkeys.Clipboard.Modifiers != _hotkeys.Clipboard.Modifiers)
+            {
+                _hotkeys = hotkeys;
+                _settings = Settings(_settings.Sources, _settings.Summary, _settings.Tts);
+                changed = true;
+            }
         }
 
         if (!changed)
@@ -1067,6 +1142,7 @@ sealed class SpeechEngine : IAsyncDisposable
         if (_player is not (PlayerState.Speaking or PlayerState.Paused) || _current?.Id != args.UtteranceId)
             return;
 
+        _position = args.Position;
         Publish(new PlayerPositionEvent
         {
             ItemId = args.UtteranceId,
@@ -1086,7 +1162,8 @@ sealed class SpeechEngine : IAsyncDisposable
         _player = PlayerState.Idle;
         Publish(new PlayerStateEvent { State = PlayerState.Idle });
         Archive(item, SpeechOutcome.Spoken);
-        Advance();
+        if (!ResumeHeld())
+            Advance();
     }
 
     void Advance()
@@ -1118,6 +1195,7 @@ sealed class SpeechEngine : IAsyncDisposable
     void BeginSpeak(SpeechItem item)
     {
         _nearEnd = false;
+        _position = 0;
         _current = item;
         var heading = SpeechHeading.Of(item.Source, item.Project);
         item.Speech = UtteranceText(item);
@@ -1271,6 +1349,7 @@ sealed class SpeechEngine : IAsyncDisposable
         Sources = sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = summary,
         Tts = tts,
+        Hotkeys = _hotkeys,
     };
 
     void Remember(SpeechItem item)
@@ -1316,6 +1395,7 @@ sealed class SpeechEngine : IAsyncDisposable
         Sources = _settings.Sources.Select(s => new SourceSettingDto { Name = s.Name, Enabled = s.Enabled }).ToList(),
         Summary = _settings.Summary,
         Tts = _settings.Tts,
+        Hotkeys = _settings.Hotkeys,
     };
 
     List<SourceStatusDto> SourceStatuses() =>
@@ -1455,4 +1535,6 @@ sealed class SpeechEngine : IAsyncDisposable
         public Action Action { get; } = action;
         public TaskCompletionSource Done { get; } = done;
     }
+
+    sealed record HeldSpeech(SpeechItem Item, double Position);
 }

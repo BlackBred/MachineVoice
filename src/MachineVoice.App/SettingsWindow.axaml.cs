@@ -31,6 +31,7 @@ public partial class SettingsWindow : Window
         _pages.AddRange(
         [
             new NavPage(new GeneralPage(), null),
+            new NavPage(new HotkeysPage(), null),
             new NavPage(new VoicePage(), null),
             new NavPage(new SystemVoicePage(), TtsEngineKind.System),
             new NavPage(new QwenPage(), TtsEngineKind.Qwen),

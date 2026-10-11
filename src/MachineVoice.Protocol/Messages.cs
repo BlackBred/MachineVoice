@@ -48,8 +48,8 @@ public sealed class ListenCommand : ClientMessage
 }
 
 /// <summary>
-/// Speaks <see cref="Text"/> at once, in any playback mode. The app reads the clipboard and passes the text:
-/// the core has no pasteboard. The same limit as an ingested response.
+/// Puts <see cref="Text"/> into the inbox as a clipboard reading. The pasteboard is never written.
+/// The file joins the queue, unless nothing is playing or interruption is turned on.
 /// </summary>
 public sealed class SpeakClipboardCommand : ClientMessage
 {
@@ -90,6 +90,7 @@ public sealed class UpdateSettingsCommand : ClientMessage
 
     public SummarySettingsDto? Summary { get; init; }
     public TtsSettingsDto? Tts { get; init; }
+    public HotkeySettingsDto? Hotkeys { get; init; }
 }
 
 public sealed class ConnectSourceCommand : ClientMessage
