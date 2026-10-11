@@ -64,6 +64,7 @@ public class McpServerTests
         {
             Endpoint = "http://llm.test/v1",
             ApiKey = "secret",
+            SystemPrompt = "Коротко.",
         })).Ok);
 
         var mode = await CallAsync(server, "machinevoice_set_mode", new JsonObject { ["mode"] = "confirm" });
@@ -111,6 +112,7 @@ public class McpServerTests
         Assert.Equal(30, settings.TimeoutSeconds);
         Assert.Equal("http://llm.test/v1", settings.Endpoint);
         Assert.Equal("secret", settings.ApiKey);
+        Assert.Equal("Коротко.", settings.SystemPrompt);
 
         await host.DisposeAsync();
     }

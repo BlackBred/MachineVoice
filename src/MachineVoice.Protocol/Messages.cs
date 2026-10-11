@@ -162,6 +162,18 @@ public sealed class DeleteVoiceCommand : ClientMessage
     public string VoiceId { get; init; } = "";
 }
 
+/// <summary>
+/// Asks the retelling endpoint whether it lists the model. Uses the values in the command, not the saved settings.
+/// The outcome is in <see cref="ResultMessage.SummaryProbe"/>.
+/// </summary>
+public sealed class ProbeSummaryCommand : ClientMessage
+{
+    public string Type { get; init; } = "probeSummary";
+    public string Endpoint { get; init; } = "";
+    public string Model { get; init; } = "";
+    public string? ApiKey { get; init; }
+}
+
 /// <summary>Whether mlx_audio.server is installed, in <see cref="ResultMessage.OmniVoice"/>.</summary>
 public sealed class GetOmniVoiceStatusCommand : ClientMessage
 {
@@ -195,6 +207,7 @@ public sealed class ResultMessage : ServerMessage
     public List<VoiceDto>? Voices { get; init; }
     public VoiceDto? Voice { get; init; }
     public OmniVoiceStatusDto? OmniVoice { get; init; }
+    public SummaryProbeDto? SummaryProbe { get; init; }
 
     /// <summary>Why the command failed, for a person to read; set when the cause is outside MachineVoice.</summary>
     public string? Detail { get; init; }

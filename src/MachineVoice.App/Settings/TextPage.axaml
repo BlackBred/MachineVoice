@@ -26,6 +26,17 @@
                        Increment="1"
                        FormatString="0" />
       </Grid>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Ellipse x:Name="ModelLamp" Classes="lamp" Width="8" Height="8" VerticalAlignment="Center" />
+        <TextBlock x:Name="ModelStatus" Classes="hint" VerticalAlignment="Center" Text="Проверяется…" />
+      </StackPanel>
+      <TextBlock Text="Системный промпт" />
+      <TextBox x:Name="SystemPrompt"
+               AcceptsReturn="True"
+               TextWrapping="Wrap"
+               MinHeight="132"
+               MaxHeight="220" />
+      <TextBlock Classes="hint" Text="Модель получает этот текст как системное сообщение. Строка /no_think в конце отключает рассуждения у гибридных моделей, например Qwen3. Очистите поле, чтобы вернуть текст по умолчанию." />
       <TextBlock Classes="hint" Text="Любой OpenAI-совместимый сервер, например Ollama. Если модель не ответит вовремя, ответ читается без пересказа." />
     </StackPanel>
 

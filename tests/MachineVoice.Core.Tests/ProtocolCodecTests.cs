@@ -83,6 +83,32 @@ public class ProtocolCodecTests
         Assert.Equal("qwen3", decoded.Summary.Model);
         Assert.Equal(SummarySettingsDto.DefaultEndpoint, decoded.Summary.Endpoint);
         Assert.Equal(7, decoded.Summary.TimeoutSeconds);
+        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, decoded.Summary.SystemPrompt);
+    }
+
+    [Fact]
+    public void ProbeSummary_RoundTripsTheModelCheck()
+    {
+        var json = ProtocolCodec.Write(new ProbeSummaryCommand
+        {
+            Version = 1,
+            Id = "ps",
+            Endpoint = "http://localhost:11434/v1",
+            Model = "qwen3:8b",
+            ApiKey = "secret",
+        });
+        var command = Assert.IsType<ProbeSummaryCommand>(ProtocolCodec.ReadClient(json).Message);
+        Assert.Equal("qwen3:8b", command.Model);
+        Assert.Equal("secret", command.ApiKey);
+
+        var result = ProtocolCodec.Write(new ResultMessage
+        {
+            Id = "ps",
+            Ok = true,
+            SummaryProbe = new SummaryProbeDto { Status = SummaryProbeStatus.Missing },
+        });
+        var decoded = Assert.IsType<ResultMessage>(ProtocolCodec.ReadServer(result));
+        Assert.Equal(SummaryProbeStatus.Missing, decoded.SummaryProbe!.Status);
     }
 
     [Fact]
@@ -108,6 +134,7 @@ public class ProtocolCodecTests
             new GetSnapshotCommand { Version = 1, Id = "n" },
             new GetOmniVoiceStatusCommand { Version = 1, Id = "os" },
             new InstallOmniVoiceCommand { Version = 1, Id = "oi" },
+            new ProbeSummaryCommand { Version = 1, Id = "ps", Endpoint = "http://localhost:11434/v1", Model = "qwen3:8b" },
         ];
 
         foreach (var command in commands)

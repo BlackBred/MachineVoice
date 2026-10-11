@@ -31,6 +31,23 @@
       <Setter Property="Foreground" Value="#E5484D" />
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
+    <Style Selector="TextBlock.ok">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#30A46C" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Ellipse.lamp">
+      <Setter Property="Fill" Value="#8E8E93" />
+    </Style>
+    <Style Selector="Ellipse.lamp.ok">
+      <Setter Property="Fill" Value="#30A46C" />
+    </Style>
+    <Style Selector="Ellipse.lamp.warn">
+      <Setter Property="Fill" Value="#D98A00" />
+    </Style>
+    <Style Selector="Ellipse.lamp.bad">
+      <Setter Property="Fill" Value="#E5484D" />
+    </Style>
     <Style Selector="Border.card">
       <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}" />
       <Setter Property="CornerRadius" Value="8" />

@@ -78,6 +78,9 @@ public abstract class ControlClient : IControlClient
     public Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default) =>
         SendAsync(new DeleteVoiceCommand { Version = ProtocolVersion.Current, Id = NewId(), VoiceId = voiceId }, cancellationToken);
 
+    public Task<ResultMessage> ProbeSummaryAsync(string endpoint, string model, string? apiKey, CancellationToken cancellationToken = default) =>
+        SendAsync(new ProbeSummaryCommand { Version = ProtocolVersion.Current, Id = NewId(), Endpoint = endpoint, Model = model, ApiKey = apiKey }, cancellationToken);
+
     public Task<ResultMessage> GetOmniVoiceStatusAsync(CancellationToken cancellationToken = default) =>
         SendAsync(new GetOmniVoiceStatusCommand { Version = ProtocolVersion.Current, Id = NewId() }, cancellationToken);
 

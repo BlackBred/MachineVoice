@@ -224,6 +224,9 @@ sealed class SpeechEngine : IAsyncDisposable
             case CommandWork { Command: InstallOmniVoiceCommand } install:
                 InstallOmniVoice(install);
                 break;
+            case CommandWork { Command: ProbeSummaryCommand } probe:
+                ProbeSummary(probe);
+                break;
             case CommandWork command:
                 command.Result.TrySetResult(Execute(command.Command));
                 break;
@@ -709,6 +712,50 @@ sealed class SpeechEngine : IAsyncDisposable
         Ok = true,
         OmniVoice = Status(_mlx?.IsInstalled == true, _modelCached(_settings.Tts.OmniVoice.Model)),
     };
+
+    /// <summary>The model list can take a few seconds, so the player loop is not blocked on it.</summary>
+    void ProbeSummary(CommandWork work)
+    {
+        var command = (ProbeSummaryCommand)work.Command;
+        if (Rejected(command) is { } rejected)
+        {
+            work.Result.TrySetResult(rejected);
+            return;
+        }
+
+        if (SummaryRules.ValidateTarget(command.Endpoint, command.Model, command.ApiKey) is not null)
+        {
+            work.Result.TrySetResult(Fail(command.Id, ProtocolErrors.InvalidArgument));
+            return;
+        }
+
+        var endpoint = command.Endpoint;
+        var model = command.Model;
+        var apiKey = command.ApiKey;
+        var shutdown = _shutdown.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var probe = await SummaryProbe.CheckAsync(_http, endpoint, model, apiKey, shutdown).ConfigureAwait(false);
+                work.Result.TrySetResult(new ResultMessage { Id = command.Id, Ok = true, SummaryProbe = probe });
+            }
+            catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+            {
+                work.Result.TrySetCanceled(shutdown);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                _log?.Invoke($"Summary probe failed: {ex.Message}");
+                work.Result.TrySetResult(new ResultMessage
+                {
+                    Id = command.Id,
+                    Ok = true,
+                    SummaryProbe = new SummaryProbeDto { Status = SummaryProbeStatus.Unreachable },
+                });
+            }
+        }, CancellationToken.None);
+    }
 
     static OmniVoiceStatusDto Status(bool installed, bool modelDownloaded) => new()
     {

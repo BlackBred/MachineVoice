@@ -86,6 +86,31 @@ public enum TtsEngineKind
     OmniVoice,
 }
 
+/// <summary>What a probe of an OpenAI-compatible <c>/models</c> endpoint found.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SummaryProbeStatus>))]
+public enum SummaryProbeStatus
+{
+    /// <summary>The endpoint lists this model.</summary>
+    [JsonStringEnumMemberName("available")]
+    Available,
+
+    /// <summary>The endpoint answered, and no model name was given.</summary>
+    [JsonStringEnumMemberName("reachable")]
+    Reachable,
+
+    /// <summary>The endpoint answered, and this model is not in its list.</summary>
+    [JsonStringEnumMemberName("missing")]
+    Missing,
+
+    /// <summary>The endpoint rejected the API key.</summary>
+    [JsonStringEnumMemberName("unauthorized")]
+    Unauthorized,
+
+    /// <summary>The endpoint did not answer with a model list.</summary>
+    [JsonStringEnumMemberName("unreachable")]
+    Unreachable,
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<SourceConnectionStatus>))]
 public enum SourceConnectionStatus
 {

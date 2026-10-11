@@ -46,6 +46,7 @@ public class SummaryTests
         Assert.Equal("small", json.RootElement.GetProperty("model").GetString());
         Assert.Equal(LlmSummarizer.MaxTokens, json.RootElement.GetProperty("max_tokens").GetInt32());
         var system = json.RootElement.GetProperty("messages")[0].GetProperty("content").GetString();
+        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, system);
         Assert.EndsWith("/no_think", system);
         var user = json.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
         Assert.Contains("code();", user);
@@ -92,12 +93,23 @@ public class SummaryTests
         var host = await TestHost.StartAsync(root.Path, tts, http);
         await using var client = await host.ConnectInProcessAsync();
         var log = EventLog.Pump(client);
-        Assert.True((await client.UpdateSettingsAsync(summary: Enabled)).Ok);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            Enabled = true,
+            Endpoint = Enabled.Endpoint,
+            Model = Enabled.Model,
+            ApiKey = Enabled.ApiKey,
+            TimeoutSeconds = Enabled.TimeoutSeconds,
+            SystemPrompt = "Одно предложение.",
+        })).Ok);
 
         var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", "ответ"));
         await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
         Assert.Equal("Cursor.\nответ.", tts.Text);
-        Assert.Single(http.Requests);
+        var (request, body) = Assert.Single(http.Requests);
+        Assert.Equal("http://llm.test/v1/chat/completions", request.RequestUri!.ToString());
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("Одно предложение.", json.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
         await host.DisposeAsync();
     }
 
@@ -145,7 +157,14 @@ public class SummaryTests
         Assert.Equal(ProtocolErrors.InvalidArgument, badEndpoint.Error);
         var badTimeout = await client.UpdateSettingsAsync(summary: new SummarySettingsDto { TimeoutSeconds = 0 });
         Assert.Equal(ProtocolErrors.InvalidArgument, badTimeout.Error);
+        var longPrompt = await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            SystemPrompt = new string('а', SummarySettingsDto.MaxSystemPrompt + 1),
+        });
+        Assert.Equal(ProtocolErrors.InvalidArgument, longPrompt.Error);
         Assert.Equal(ProtocolErrors.InvalidArgument, (await client.UpdateSettingsAsync()).Error);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto { Model = "m", SystemPrompt = "   " })).Ok);
+        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, (await client.GetSettingsAsync()).Settings!.Summary.SystemPrompt);
 
         Assert.True((await client.UpdateSettingsAsync(PlaybackMode.Silent, Enabled)).Ok);
         Assert.True((await client.UpdateSettingsAsync(PlaybackMode.Auto)).Ok);
@@ -160,6 +179,54 @@ public class SummaryTests
         Assert.Equal("http://llm.test/v1/", settings.Summary.Endpoint);
         Assert.Equal("small", settings.Summary.Model);
         Assert.Equal(10, settings.Summary.TimeoutSeconds);
+        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, settings.Summary.SystemPrompt);
         await restarted.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task Probe_ReportsWhetherTheEndpointListsTheModel()
+    {
+        await using var root = new TempRoot();
+        var http = new StubHttpHandler((request, _, _) =>
+        {
+            if (request.Headers.Authorization?.Parameter == "bad")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            if (request.RequestUri!.Host == "down.test")
+                throw new HttpRequestException("refused");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"data":[{"id":"qwen3:8b:latest"}]}""",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+            });
+        });
+        var host = await TestHost.StartAsync(root.Path, new ManualTtsEngine(), http);
+        await using var client = await host.ConnectInProcessAsync();
+
+        var listed = await client.ProbeSummaryAsync("http://llm.test/v1/", "qwen3:8b", "secret");
+        Assert.True(listed.Ok);
+        Assert.Equal(SummaryProbeStatus.Available, listed.SummaryProbe!.Status);
+        var (request, _) = Assert.Single(http.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("http://llm.test/v1/models", request.RequestUri!.ToString());
+        Assert.Equal("Bearer secret", request.Headers.Authorization!.ToString());
+
+        var missing = await client.ProbeSummaryAsync("http://llm.test/v1", "other", null);
+        Assert.Equal(SummaryProbeStatus.Missing, missing.SummaryProbe!.Status);
+        Assert.Null(http.Requests[^1].Request.Headers.Authorization);
+
+        var unnamed = await client.ProbeSummaryAsync("http://llm.test/v1", "  ", null);
+        Assert.Equal(SummaryProbeStatus.Reachable, unnamed.SummaryProbe!.Status);
+
+        var denied = await client.ProbeSummaryAsync("http://llm.test/v1", "qwen3:8b", "bad");
+        Assert.Equal(SummaryProbeStatus.Unauthorized, denied.SummaryProbe!.Status);
+
+        var down = await client.ProbeSummaryAsync("http://down.test/v1", "qwen3:8b", null);
+        Assert.Equal(SummaryProbeStatus.Unreachable, down.SummaryProbe!.Status);
+
+        var badAddress = await client.ProbeSummaryAsync("ftp://x", "qwen3:8b", null);
+        Assert.Equal(ProtocolErrors.InvalidArgument, badAddress.Error);
+        await host.DisposeAsync();
     }
 }

@@ -193,6 +193,17 @@ public sealed class SummarySettingsDto
     public const string DefaultEndpoint = "http://localhost:11434/v1";
     public const int DefaultTimeoutSeconds = 20;
     public const int MaxTimeoutSeconds = 300;
+    public const int MaxSystemPrompt = 8_000;
+
+    /// <summary>
+    /// The system message the retelling sends. The last line, /no_think, makes hybrid models (Qwen3)
+    /// skip the chain of thought; other models ignore it.
+    /// </summary>
+    public const string DefaultSystemPrompt =
+        """
+        Перескажи ответ AI-ассистента так, чтобы его было удобно слушать. Пиши на языке ответа. Сохрани суть, выводы, найденные проблемы и вопросы к пользователю. Не зачитывай код, пути к файлам, ссылки и таблицы дословно: скажи своими словами, что в них. Без Markdown, списков, заголовков и эмодзи, короткими предложениями. Ничего не добавляй от себя.
+        /no_think
+        """;
 
     public bool Enabled { get; init; }
 
@@ -204,6 +215,15 @@ public sealed class SummarySettingsDto
 
     /// <summary>When the model does not answer in time, the rules-only text is spoken.</summary>
     public int TimeoutSeconds { get; init; } = DefaultTimeoutSeconds;
+
+    /// <summary>System message. Empty means <see cref="DefaultSystemPrompt"/>.</summary>
+    public string SystemPrompt { get; init; } = DefaultSystemPrompt;
+}
+
+/// <summary>Whether the retelling endpoint lists the chosen model. Does not change settings.</summary>
+public sealed class SummaryProbeDto
+{
+    public SummaryProbeStatus Status { get; init; }
 }
 
 public sealed class SourceStatusDto

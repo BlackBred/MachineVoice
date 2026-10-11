@@ -86,7 +86,7 @@ static class McpTools
             "machinevoice_set_summary",
             "Configure the LLM retelling",
             "Turns the LLM retelling of responses on or off and sets the model and the timeout. " +
-            "Omitted fields keep their values. The endpoint and the API key are changed only in the MachineVoice settings.",
+            "Omitted fields keep their values. The endpoint, the API key and the system prompt are changed only in the MachineVoice settings.",
             () => Schema(new JsonObject
             {
                 ["enabled"] = new JsonObject { ["type"] = "boolean", ["description"] = "Retell responses through the LLM before reading them." },
@@ -259,6 +259,7 @@ static class McpTools
             Model = model ?? summary.Model,
             ApiKey = summary.ApiKey,
             TimeoutSeconds = timeout ?? summary.TimeoutSeconds,
+            SystemPrompt = summary.SystemPrompt,
         };
         var result = await client.UpdateSettingsAsync(summary: updated, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (result.Error == ProtocolErrors.InvalidArgument)

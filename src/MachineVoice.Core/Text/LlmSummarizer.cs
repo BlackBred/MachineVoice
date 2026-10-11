@@ -12,16 +12,6 @@ namespace MachineVoice.Core;
 /// </summary>
 public sealed partial class LlmSummarizer : ITextProcessor
 {
-    public const string SystemPrompt =
-        "Перескажи ответ AI-ассистента так, чтобы его было удобно слушать. " +
-        "Пиши на языке ответа. Сохрани суть, выводы, найденные проблемы и вопросы к пользователю. " +
-        "Не зачитывай код, пути к файлам, ссылки и таблицы дословно: скажи своими словами, что в них. " +
-        "Без Markdown, списков, заголовков и эмодзи, короткими предложениями. Ничего не добавляй от себя.";
-
-    // Hybrid reasoning models (Qwen3) skip the chain of thought on this switch; other models ignore it.
-    // A server-specific request field would make strict OpenAI-compatible endpoints reject the request.
-    const string NoThinking = "\n/no_think";
-
     /// <summary>A longer retelling is cut off mid-sentence, so the rules are used instead.</summary>
     public const int MaxTokens = 1024;
 
@@ -69,7 +59,7 @@ public sealed partial class LlmSummarizer : ITextProcessor
             Model = _settings.Model.Trim(),
             Messages =
             [
-                new ChatMessage { Role = "system", Content = SystemPrompt + NoThinking },
+                new ChatMessage { Role = "system", Content = SummaryRules.Prompt(_settings) },
                 new ChatMessage { Role = "user", Content = UserMessage(text, context) },
             ],
             MaxTokens = MaxTokens,
@@ -116,9 +106,28 @@ static class SummaryRules
             return ProtocolErrors.InvalidArgument;
         if ((settings.Model?.Trim().Length ?? 0) > MaxModel || (settings.ApiKey?.Length ?? 0) > MaxApiKey)
             return ProtocolErrors.InvalidArgument;
+        if ((settings.SystemPrompt?.Trim().Length ?? 0) > SummarySettingsDto.MaxSystemPrompt)
+            return ProtocolErrors.InvalidArgument;
         if (settings.Enabled && string.IsNullOrWhiteSpace(settings.Model))
             return ProtocolErrors.InvalidArgument;
         return null;
+    }
+
+    /// <summary>The address, model and key a probe may use. An empty model is allowed: the server is checked anyway.</summary>
+    public static string? ValidateTarget(string? endpoint, string? model, string? apiKey)
+    {
+        if (!Uri.TryCreate(endpoint?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            return ProtocolErrors.InvalidArgument;
+        if ((model?.Trim().Length ?? 0) > MaxModel || (apiKey?.Length ?? 0) > MaxApiKey)
+            return ProtocolErrors.InvalidArgument;
+        return null;
+    }
+
+    /// <summary>The system message actually sent. A blank setting keeps the built-in prompt, including /no_think.</summary>
+    public static string Prompt(SummarySettingsDto settings)
+    {
+        var prompt = settings.SystemPrompt?.Trim() ?? "";
+        return prompt.Length == 0 ? SummarySettingsDto.DefaultSystemPrompt : prompt;
     }
 
     public static SummarySettingsDto Canonical(SummarySettingsDto settings) => new()
@@ -128,6 +137,7 @@ static class SummaryRules
         Model = settings.Model?.Trim() ?? "",
         ApiKey = string.IsNullOrWhiteSpace(settings.ApiKey) ? null : settings.ApiKey.Trim(),
         TimeoutSeconds = settings.TimeoutSeconds,
+        SystemPrompt = Prompt(settings),
     };
 }
 
@@ -160,4 +170,5 @@ sealed class ChatChoice
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 [JsonSerializable(typeof(ChatRequest))]
 [JsonSerializable(typeof(ChatResponse))]
+[JsonSerializable(typeof(ModelList))]
 sealed partial class SummaryJsonContext : JsonSerializerContext;

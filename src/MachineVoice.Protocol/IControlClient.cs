@@ -47,6 +47,9 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> SaveVoiceAsync(string draftId, string name, CancellationToken cancellationToken = default);
     Task<ResultMessage> DeleteVoiceAsync(string voiceId, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether <paramref name="endpoint"/> lists <paramref name="model"/>. Does not change settings.</summary>
+    Task<ResultMessage> ProbeSummaryAsync(string endpoint, string model, string? apiKey, CancellationToken cancellationToken = default);
+
     /// <summary>Whether the local mlx-audio server is installed.</summary>
     Task<ResultMessage> GetOmniVoiceStatusAsync(CancellationToken cancellationToken = default);
 
