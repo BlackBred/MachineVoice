@@ -85,7 +85,7 @@ static class McpTools
         new(
             "machinevoice_set_summary",
             "Configure the LLM retelling",
-            "Turns the LLM retelling of responses on or off and sets the model and the timeout. " +
+            "Turns the LLM retelling of responses on or off and sets the model, the timeout, the length limit and which text is read by default. " +
             "Omitted fields keep their values. The endpoint, the API key and the system prompt are changed only in the MachineVoice settings.",
             () => Schema(new JsonObject
             {
@@ -98,6 +98,14 @@ static class McpTools
                     ["maximum"] = SummarySettingsDto.MaxTimeoutSeconds,
                     ["description"] = "How long to wait for the retelling before reading the response without it.",
                 },
+                ["length_limit"] = new JsonObject
+                {
+                    ["type"] = "integer",
+                    ["minimum"] = 0,
+                    ["maximum"] = SummarySettingsDto.MaxLengthLimit,
+                    ["description"] = "Retell only when the original text is longer than this many characters. 0 retells every non-empty text.",
+                },
+                ["default_reading"] = Enum("Which text is read when a retelling exists. full, or summary. Without a retelling the full text is read.", "full", "summary"),
             }),
             () => new JsonObject { ["readOnlyHint"] = false, ["destructiveHint"] = false, ["idempotentHint"] = true, ["openWorldHint"] = false },
             SetSummaryAsync),
@@ -149,6 +157,8 @@ static class McpTools
                 ["endpoint"] = summary.Endpoint,
                 ["model"] = summary.Model,
                 ["timeoutSeconds"] = summary.TimeoutSeconds,
+                ["lengthLimit"] = summary.LengthLimit,
+                ["defaultReading"] = Name(summary.DefaultReading, ProtocolJsonContext.Default.ReadingPreference),
                 ["apiKeySet"] = !string.IsNullOrEmpty(summary.ApiKey),
             },
             ["tts"] = new JsonObject
@@ -242,10 +252,12 @@ static class McpTools
         var enabled = arguments.Bool("enabled");
         var model = arguments.String("model");
         var timeout = arguments.Int("timeout_seconds");
+        var length = arguments.Int("length_limit");
+        var reading = arguments.Enum("default_reading", ProtocolJsonContext.Default.ReadingPreference, "full, summary");
         if (arguments.Error is { } error)
             return ToolResult.Fail(error);
-        if (enabled is null && model is null && timeout is null)
-            return ToolResult.Fail("Pass at least one of: enabled, model, timeout_seconds.");
+        if (enabled is null && model is null && timeout is null && length is null && reading is null)
+            return ToolResult.Fail("Pass at least one of: enabled, model, timeout_seconds, length_limit, default_reading.");
 
         var current = await client.GetSettingsAsync(cancellationToken).ConfigureAwait(false);
         if (!current.Ok || current.Settings is null)
@@ -259,18 +271,22 @@ static class McpTools
             Model = model ?? summary.Model,
             ApiKey = summary.ApiKey,
             TimeoutSeconds = timeout ?? summary.TimeoutSeconds,
+            LengthLimit = length ?? summary.LengthLimit,
+            DefaultReading = reading ?? summary.DefaultReading,
             SystemPrompt = summary.SystemPrompt,
         };
         var result = await client.UpdateSettingsAsync(summary: updated, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (result.Error == ProtocolErrors.InvalidArgument)
             return ToolResult.Fail(
-                $"Invalid retelling settings: a model is required to enable it, the timeout is 1 to {SummarySettingsDto.MaxTimeoutSeconds} seconds.");
+                $"Invalid retelling settings: a model is required to enable it, the timeout is 1 to {SummarySettingsDto.MaxTimeoutSeconds} seconds, the length limit is 0 to {SummarySettingsDto.MaxLengthLimit}.");
         if (!result.Ok)
             return Rejected(result);
 
         var state = updated.Enabled ? "on" : "off";
         var shownModel = string.IsNullOrWhiteSpace(updated.Model) ? "not set" : updated.Model.Trim();
-        return ToolResult.Ok($"Retelling: {state}, model: {shownModel}, timeout: {updated.TimeoutSeconds} s.");
+        var readingName = Name(updated.DefaultReading, ProtocolJsonContext.Default.ReadingPreference);
+        return ToolResult.Ok(
+            $"Retelling: {state}, model: {shownModel}, timeout: {updated.TimeoutSeconds} s, length limit: {updated.LengthLimit}, default: {readingName}.");
     }
 
     static ToolResult Rejected(ResultMessage result) => ToolResult.Fail(result.Error switch

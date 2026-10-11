@@ -31,6 +31,9 @@ public partial class OverlayWindow : Window
     public event Action? ListenRequested;
     public event Action? DismissRequested;
 
+    /// <summary>True chooses the retelling of the response on the toast.</summary>
+    public event Action<bool>? ReadingRequested;
+
     IntPtr NSWindow =>
         TryGetPlatformHandle() is { HandleDescriptor: "NSWindow" } handle ? handle.Handle : IntPtr.Zero;
 
@@ -73,7 +76,19 @@ public partial class OverlayWindow : Window
             PlaybackButtons.IsVisible = false;
             ConfirmButtons.IsVisible = true;
             ConfirmOpenChatButton.IsVisible = Labels.CanOpenChat(pending.Source);
+            ShowReadingChoice(pending, state.Settings.Summary.Enabled);
         }
+    }
+
+    void ShowReadingChoice(SpeechItemDto pending, bool summaryEnabled)
+    {
+        var hasSummary = pending.HasSummary;
+        var readSummary = hasSummary && pending.ReadSummary;
+        ReadingButtons.IsVisible = hasSummary || summaryEnabled;
+        FullTextButton.Classes.Set("chosen", !readSummary);
+        SummaryButton.Classes.Set("chosen", readSummary);
+        SummaryButton.IsEnabled = hasSummary;
+        ToolTip.SetTip(SummaryButton, hasSummary ? "Пересказ" : "Пересказа нет");
     }
 
     public void UpdateProgress(ControlState state) => ProgressLine.Value = state.Progress ?? 0;
@@ -123,6 +138,18 @@ public partial class OverlayWindow : Window
     void OnPause(object? sender, RoutedEventArgs e) => PauseResumeRequested?.Invoke();
     void OnSkip(object? sender, RoutedEventArgs e) => SkipRequested?.Invoke();
     void OnOpenChat(object? sender, RoutedEventArgs e) => OpenChatRequested?.Invoke();
+    void OnFullText(object? sender, RoutedEventArgs e)
+    {
+        if (!FullTextButton.Classes.Contains("chosen"))
+            ReadingRequested?.Invoke(false);
+    }
+
+    void OnSummary(object? sender, RoutedEventArgs e)
+    {
+        if (SummaryButton.IsEnabled && !SummaryButton.Classes.Contains("chosen"))
+            ReadingRequested?.Invoke(true);
+    }
+
     void OnListen(object? sender, RoutedEventArgs e) => ListenRequested?.Invoke();
     void OnDismiss(object? sender, RoutedEventArgs e) => DismissRequested?.Invoke();
 }

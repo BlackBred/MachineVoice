@@ -15,6 +15,8 @@
     <StreamGeometry x:Key="PlayGlyph">M4,1.5 L14,8 L4,14.5 Z</StreamGeometry>
     <StreamGeometry x:Key="SkipGlyph">M2,2 L10,8 L2,14 Z M11,2 L14,2 L14,14 L11,14 Z</StreamGeometry>
     <StreamGeometry x:Key="ChatGlyph">M1.5,2.5 L14.5,2.5 L14.5,11 L7.5,11 L4,14.5 L4,11 L1.5,11 Z</StreamGeometry>
+    <StreamGeometry x:Key="FullTextGlyph">M1,1.5 L15,1.5 L15,3.2 L1,3.2 Z M1,5.6 L15,5.6 L15,7.3 L1,7.3 Z M1,9.7 L15,9.7 L15,11.4 L1,11.4 Z M1,13.8 L10,13.8 L10,15.5 L1,15.5 Z</StreamGeometry>
+    <StreamGeometry x:Key="SummaryGlyph">M1.5,1.5 L3.6,1.5 L3.6,14.5 L1.5,14.5 Z M5.5,2.5 L14.5,2.5 L14.5,4.2 L5.5,4.2 Z M5.5,6.4 L12.5,6.4 L12.5,8.1 L5.5,8.1 Z M5.5,10.3 L14,10.3 L14,12 L5.5,12 Z</StreamGeometry>
     <StreamGeometry x:Key="MinusGlyph">M2,7 L14,7 L14,9 L2,9 Z</StreamGeometry>
     <StreamGeometry x:Key="PlusGlyph">M7,2 L9,2 L9,7 L14,7 L14,9 L9,9 L9,14 L7,14 L7,9 L2,9 L2,7 L7,7 Z</StreamGeometry>
   </Window.Resources>
@@ -37,6 +39,12 @@
       <Setter Property="Width" Value="14" />
       <Setter Property="Height" Value="14" />
     </Style>
+    <Style Selector="Button.icon.choice.chosen /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#40FFFFFF" />
+    </Style>
+    <Style Selector="Button.icon.choice.chosen:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#59FFFFFF" />
+    </Style>
     <Style Selector="Button.pill">
       <Setter Property="CornerRadius" Value="14" />
       <Setter Property="Padding" Value="12,5" />
@@ -50,7 +58,7 @@
           CornerRadius="28"
           Padding="20,10,10,10"
           Margin="8"
-          Width="540">
+          Width="620">
     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
       <Border x:Name="QueueBadge"
               MinWidth="30"
@@ -128,6 +136,14 @@
                   Spacing="6"
                   VerticalAlignment="Center"
                   IsVisible="False">
+        <StackPanel x:Name="ReadingButtons" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="FullTextButton" Classes="icon choice" Click="OnFullText" ToolTip.Tip="Полный текст">
+            <PathIcon Data="{StaticResource FullTextGlyph}" />
+          </Button>
+          <Button x:Name="SummaryButton" Classes="icon choice" Click="OnSummary" ToolTip.Tip="Пересказ">
+            <PathIcon Data="{StaticResource SummaryGlyph}" />
+          </Button>
+        </StackPanel>
         <Button Classes="pill accent" Content="Слушать" Click="OnListen" />
         <Button Classes="pill" Content="Пропустить" Click="OnDismiss" />
         <Button x:Name="ConfirmOpenChatButton" Classes="pill" Content="Открыть чат" Click="OnOpenChat" />

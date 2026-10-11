@@ -65,6 +65,8 @@ public class McpServerTests
             Endpoint = "http://llm.test/v1",
             ApiKey = "secret",
             SystemPrompt = "Коротко.",
+            LengthLimit = 800,
+            DefaultReading = ReadingPreference.Full,
         })).Ok);
 
         var mode = await CallAsync(server, "machinevoice_set_mode", new JsonObject { ["mode"] = "confirm" });
@@ -80,6 +82,8 @@ public class McpServerTests
         Assert.Equal(accepted.Id, (string?)report["awaitingConfirmation"]!["id"]);
         Assert.Equal("тема", (string?)report["awaitingConfirmation"]!["topic"]);
         Assert.True((bool?)report["summary"]!["apiKeySet"]);
+        Assert.Equal(800, (int?)report["summary"]!["lengthLimit"]);
+        Assert.Equal("full", (string?)report["summary"]!["defaultReading"]);
         Assert.DoesNotContain("secret", Text(status));
         Assert.DoesNotContain("секретный", Text(status));
 
@@ -113,6 +117,19 @@ public class McpServerTests
         Assert.Equal("http://llm.test/v1", settings.Endpoint);
         Assert.Equal("secret", settings.ApiKey);
         Assert.Equal("Коротко.", settings.SystemPrompt);
+        Assert.Equal(800, settings.LengthLimit);
+        Assert.Equal(ReadingPreference.Full, settings.DefaultReading);
+
+        var reading = await CallAsync(server, "machinevoice_set_summary", new JsonObject
+        {
+            ["length_limit"] = 1200,
+            ["default_reading"] = "summary",
+        });
+        Assert.False(IsError(reading), Text(reading));
+        var changed = (await client.GetSettingsAsync()).Settings!.Summary;
+        Assert.Equal(1200, changed.LengthLimit);
+        Assert.Equal(ReadingPreference.Summary, changed.DefaultReading);
+        Assert.Equal("qwen3:8b", changed.Model);
 
         await host.DisposeAsync();
     }
@@ -130,6 +147,8 @@ public class McpServerTests
         Assert.True(IsError(await CallAsync(server, "machinevoice_playback", new JsonObject { ["action"] = 5 })));
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject())));
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject { ["enabled"] = true })));
+        Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject { ["default_reading"] = "both" })));
+        Assert.True(IsError(await CallAsync(server, "machinevoice_set_summary", new JsonObject { ["length_limit"] = -1 })));
         Assert.True(IsError(await CallAsync(server, "machinevoice_confirmation", new JsonObject { ["action"] = "listen" })));
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_speed", new JsonObject())));
         Assert.True(IsError(await CallAsync(server, "machinevoice_set_speed", new JsonObject { ["rate"] = "fast" })));

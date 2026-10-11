@@ -12,8 +12,14 @@ public sealed class SpeechItemDto
     public string? Topic { get; init; }
     public string Text { get; init; } = "";
 
-    /// <summary>Text after the text pipeline, as it goes to TTS. Null until the item is prepared.</summary>
+    /// <summary>The text that will be read, after the text pipeline. Null until the item is prepared.</summary>
     public string? Speech { get; init; }
+
+    /// <summary>A retelling exists, so the toast can offer it beside the full text.</summary>
+    public bool HasSummary { get; init; }
+
+    /// <summary>The retelling is the text that will be read. Stays false when there is none.</summary>
+    public bool ReadSummary { get; init; }
 
     public DateTimeOffset ReceivedAt { get; init; }
 }
@@ -195,6 +201,11 @@ public sealed class SummarySettingsDto
     public const int MaxTimeoutSeconds = 300;
     public const int MaxSystemPrompt = 8_000;
 
+    /// <summary>Retell only when the original text is longer than this. 500 is a short paragraph.</summary>
+    public const int DefaultLengthLimit = 500;
+
+    public const int MaxLengthLimit = 100_000;
+
     /// <summary>
     /// The system message the retelling sends. The last line, /no_think, makes hybrid models (Qwen3)
     /// skip the chain of thought; other models ignore it.
@@ -215,6 +226,17 @@ public sealed class SummarySettingsDto
 
     /// <summary>When the model does not answer in time, the rules-only text is spoken.</summary>
     public int TimeoutSeconds { get; init; } = DefaultTimeoutSeconds;
+
+    /// <summary>
+    /// A retelling is created only when the original text is longer than this, in characters.
+    /// 0 retells every non-empty text. A shorter text is read as it is.
+    /// </summary>
+    public int LengthLimit { get; init; } = DefaultLengthLimit;
+
+    /// <summary>
+    /// Which text is read when a retelling exists. When it does not, the full text is read anyway.
+    /// </summary>
+    public ReadingPreference DefaultReading { get; init; } = ReadingPreference.Summary;
 
     /// <summary>System message. Empty means <see cref="DefaultSystemPrompt"/>.</summary>
     public string SystemPrompt { get; init; } = DefaultSystemPrompt;

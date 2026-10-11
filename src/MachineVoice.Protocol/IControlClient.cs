@@ -17,6 +17,9 @@ public interface IControlClient : IAsyncDisposable
     Task<ResultMessage> SeekAsync(double position, CancellationToken cancellationToken = default);
     Task<ResultMessage> ListenAsync(string itemId, CancellationToken cancellationToken = default);
 
+    /// <summary>Chooses the full text or the retelling of a waiting response.</summary>
+    Task<ResultMessage> SelectReadingAsync(string itemId, bool readSummary, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Puts <paramref name="text"/> into the inbox as a clipboard reading. Does not read or write the pasteboard.
     /// </summary>

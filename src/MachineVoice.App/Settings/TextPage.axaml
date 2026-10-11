@@ -8,6 +8,24 @@
     <StackPanel Spacing="10">
       <TextBlock Classes="h" Text="Пересказ через LLM" />
       <CheckBox x:Name="Enabled" Content="Пересказывать ответы перед чтением" />
+      <Grid Classes="form" ColumnDefinitions="140,*">
+        <TextBlock Text="Лимит, символов" />
+        <NumericUpDown x:Name="LengthLimit"
+                       Grid.Column="1"
+                       HorizontalAlignment="Left"
+                       Width="140"
+                       Minimum="0"
+                       Maximum="100000"
+                       Increment="50"
+                       FormatString="0" />
+      </Grid>
+      <TextBlock Classes="hint" Text="Пересказ создаётся, только если исходный текст длиннее. Более короткий читается целиком. Ноль — для любого непустого текста." />
+      <TextBlock Text="Слушать по умолчанию" />
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <RadioButton x:Name="PreferFull" GroupName="reading" Content="Полный текст" />
+        <RadioButton x:Name="PreferSummary" GroupName="reading" Content="Пересказ" />
+      </StackPanel>
+      <TextBlock Classes="hint" Text="Если выбран пересказ, а для этого ответа его нет, читается полный текст. В тосте выбор можно сменить." />
       <Grid Classes="form" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
         <TextBlock Text="Адрес" />
         <TextBox x:Name="Endpoint" Grid.Column="1" PlaceholderText="http://localhost:11434/v1" />

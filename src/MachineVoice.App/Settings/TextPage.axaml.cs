@@ -15,7 +15,7 @@ public partial class TextPage : SettingsPage
     public TextPage()
     {
         InitializeComponent();
-        Watch(Enabled, Endpoint, Model, ApiKey, Timeout, SystemPrompt);
+        Watch(Enabled, LengthLimit, PreferFull, PreferSummary, Endpoint, Model, ApiKey, Timeout, SystemPrompt);
         UseSaveBar(SaveButton, SaveStatus);
         _probeDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
         _probeDelay.Tick += async (_, _) =>
@@ -55,6 +55,8 @@ public partial class TextPage : SettingsPage
         _shown.Set(saved);
         Show(new Values(
             read.Enabled == shown.Enabled ? saved.Enabled : read.Enabled,
+            read.LengthLimit == shown.LengthLimit ? saved.LengthLimit : read.LengthLimit,
+            read.DefaultReading == shown.DefaultReading ? saved.DefaultReading : read.DefaultReading,
             read.Endpoint == shown.Endpoint ? saved.Endpoint : read.Endpoint,
             read.Model == shown.Model ? saved.Model : read.Model,
             read.ApiKey == shown.ApiKey ? saved.ApiKey : read.ApiKey,
@@ -67,6 +69,7 @@ public partial class TextPage : SettingsPage
         var values = Read();
         var valid = Check(Endpoint, Fields.ValidEndpoint(values.Endpoint), "Нужен адрес http:// или https://")
             & Check(Model, !values.Enabled || values.Model.Length > 0, "Укажите модель для пересказа")
+            & Check(LengthLimit, values.LengthLimit is >= 0 and <= SummarySettingsDto.MaxLengthLimit, $"От 0 до {SummarySettingsDto.MaxLengthLimit}")
             & Check(Timeout, values.Timeout is >= 1 and <= SummarySettingsDto.MaxTimeoutSeconds, $"От 1 до {SummarySettingsDto.MaxTimeoutSeconds} с")
             & Check(SystemPrompt, values.SystemPrompt.Length <= SummarySettingsDto.MaxSystemPrompt, $"Не длиннее {SummarySettingsDto.MaxSystemPrompt} символов");
         if (!valid)
@@ -79,6 +82,8 @@ public partial class TextPage : SettingsPage
             Model = values.Model,
             ApiKey = values.ApiKey.Length == 0 ? null : values.ApiKey,
             TimeoutSeconds = values.Timeout,
+            LengthLimit = values.LengthLimit,
+            DefaultReading = values.DefaultReading,
             SystemPrompt = values.SystemPrompt,
         };
         var result = await Client.UpdateSettingsAsync(summary: summary);
@@ -101,6 +106,9 @@ public partial class TextPage : SettingsPage
                 Model.Text = values.Model;
                 ApiKey.Text = values.ApiKey;
                 Timeout.Value = values.Timeout >= 0 ? values.Timeout : null;
+                LengthLimit.Value = values.LengthLimit >= 0 ? values.LengthLimit : null;
+                PreferFull.IsChecked = values.DefaultReading == ReadingPreference.Full;
+                PreferSummary.IsChecked = values.DefaultReading == ReadingPreference.Summary;
                 SystemPrompt.Text = values.SystemPrompt;
             });
         }
@@ -194,17 +202,29 @@ public partial class TextPage : SettingsPage
 
     Values Read() => new(
         Enabled.IsChecked == true,
+        Fields.Whole(LengthLimit),
+        PreferFull.IsChecked == true ? ReadingPreference.Full : ReadingPreference.Summary,
         Fields.Text(Endpoint, SummarySettingsDto.DefaultEndpoint),
         Fields.Text(Model),
         Fields.Text(ApiKey),
         Fields.Whole(Timeout),
         Fields.Text(SystemPrompt, SummarySettingsDto.DefaultSystemPrompt));
 
-    sealed record Values(bool Enabled, string Endpoint, string Model, string ApiKey, int Timeout, string SystemPrompt)
+    sealed record Values(
+        bool Enabled,
+        int LengthLimit,
+        ReadingPreference DefaultReading,
+        string Endpoint,
+        string Model,
+        string ApiKey,
+        int Timeout,
+        string SystemPrompt)
     {
         public static Values Of(SummarySettingsDto summary) =>
             new(
                 summary.Enabled,
+                summary.LengthLimit,
+                summary.DefaultReading,
                 summary.Endpoint,
                 summary.Model,
                 summary.ApiKey ?? "",

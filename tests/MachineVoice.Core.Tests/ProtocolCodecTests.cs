@@ -83,7 +83,19 @@ public class ProtocolCodecTests
         Assert.Equal("qwen3", decoded.Summary.Model);
         Assert.Equal(SummarySettingsDto.DefaultEndpoint, decoded.Summary.Endpoint);
         Assert.Equal(7, decoded.Summary.TimeoutSeconds);
+        Assert.Equal(SummarySettingsDto.DefaultLengthLimit, decoded.Summary.LengthLimit);
+        Assert.Equal(ReadingPreference.Summary, decoded.Summary.DefaultReading);
         Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, decoded.Summary.SystemPrompt);
+
+        var chosen = ProtocolCodec.Write(new UpdateSettingsCommand
+        {
+            Version = ProtocolVersion.Current,
+            Id = "u2",
+            Summary = new SummarySettingsDto { LengthLimit = 800, DefaultReading = ReadingPreference.Full },
+        });
+        var chosenSummary = Assert.IsType<UpdateSettingsCommand>(ProtocolCodec.ReadClient(chosen).Message).Summary!;
+        Assert.Equal(800, chosenSummary.LengthLimit);
+        Assert.Equal(ReadingPreference.Full, chosenSummary.DefaultReading);
     }
 
     [Fact]
@@ -123,6 +135,7 @@ public class ProtocolCodecTests
             new SetPlaybackRateCommand { Version = 1, Id = "v", Rate = 1.25 },
             new SeekCommand { Version = 1, Id = "e", Position = 12.5 },
             new ListenCommand { Version = 1, Id = "l", ItemId = "item" },
+            new SelectReadingCommand { Version = 1, Id = "s", ItemId = "item", ReadSummary = true },
             new SpeakClipboardCommand { Version = 1, Id = "b", Text = "из буфера" },
             new DismissCommand { Version = 1, Id = "d", ItemId = "item" },
             new OpenChatCommand { Version = 1, Id = "o", ItemId = "item" },
@@ -144,6 +157,11 @@ public class ProtocolCodecTests
             Assert.IsType(command.GetType(), decoded.Message);
             Assert.Equal(command.Id, decoded.Message!.Id);
         }
+
+        var selected = Assert.IsType<SelectReadingCommand>(ProtocolCodec.ReadClient(ProtocolCodec.Write(
+            new SelectReadingCommand { Version = 1, Id = "s2", ItemId = "item", ReadSummary = true })).Message);
+        Assert.True(selected.ReadSummary);
+        Assert.Equal("item", selected.ItemId);
 
         ServerMessage[] events =
         [

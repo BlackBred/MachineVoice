@@ -147,6 +147,11 @@ sealed class AppController
             if (_state.Confirmation?.Id is { } id)
                 Send(client => client.ListenAsync(id));
         };
+        _overlay.ReadingRequested += readSummary =>
+        {
+            if (_state.Confirmation?.Id is { } id)
+                Send(client => client.SelectReadingAsync(id, readSummary));
+        };
         _overlay.DismissRequested += () =>
         {
             if (_state.Confirmation?.Id is { } id)

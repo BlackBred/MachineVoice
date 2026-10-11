@@ -14,6 +14,7 @@ public class SummaryTests
         Model = "small",
         ApiKey = "secret",
         TimeoutSeconds = 10,
+        LengthLimit = 0,
     };
 
     [Fact(Timeout = 20000)]
@@ -75,6 +76,7 @@ public class SummaryTests
             Enabled = true,
             Model = "slow",
             TimeoutSeconds = 1,
+            LengthLimit = 0,
         })).Ok);
 
         var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", "**ответ**"));
@@ -100,6 +102,7 @@ public class SummaryTests
             Model = Enabled.Model,
             ApiKey = Enabled.ApiKey,
             TimeoutSeconds = Enabled.TimeoutSeconds,
+            LengthLimit = 0,
             SystemPrompt = "Одно предложение.",
         })).Ok);
 
@@ -157,6 +160,10 @@ public class SummaryTests
         Assert.Equal(ProtocolErrors.InvalidArgument, badEndpoint.Error);
         var badTimeout = await client.UpdateSettingsAsync(summary: new SummarySettingsDto { TimeoutSeconds = 0 });
         Assert.Equal(ProtocolErrors.InvalidArgument, badTimeout.Error);
+        var shortLimit = await client.UpdateSettingsAsync(summary: new SummarySettingsDto { LengthLimit = -1 });
+        Assert.Equal(ProtocolErrors.InvalidArgument, shortLimit.Error);
+        var longLimit = await client.UpdateSettingsAsync(summary: new SummarySettingsDto { LengthLimit = SummarySettingsDto.MaxLengthLimit + 1 });
+        Assert.Equal(ProtocolErrors.InvalidArgument, longLimit.Error);
         var longPrompt = await client.UpdateSettingsAsync(summary: new SummarySettingsDto
         {
             SystemPrompt = new string('а', SummarySettingsDto.MaxSystemPrompt + 1),
@@ -164,7 +171,10 @@ public class SummaryTests
         Assert.Equal(ProtocolErrors.InvalidArgument, longPrompt.Error);
         Assert.Equal(ProtocolErrors.InvalidArgument, (await client.UpdateSettingsAsync()).Error);
         Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto { Model = "m", SystemPrompt = "   " })).Ok);
-        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, (await client.GetSettingsAsync()).Settings!.Summary.SystemPrompt);
+        var defaults = (await client.GetSettingsAsync()).Settings!.Summary;
+        Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, defaults.SystemPrompt);
+        Assert.Equal(SummarySettingsDto.DefaultLengthLimit, defaults.LengthLimit);
+        Assert.Equal(ReadingPreference.Summary, defaults.DefaultReading);
 
         Assert.True((await client.UpdateSettingsAsync(PlaybackMode.Silent, Enabled)).Ok);
         Assert.True((await client.UpdateSettingsAsync(PlaybackMode.Auto)).Ok);
@@ -179,6 +189,8 @@ public class SummaryTests
         Assert.Equal("http://llm.test/v1/", settings.Summary.Endpoint);
         Assert.Equal("small", settings.Summary.Model);
         Assert.Equal(10, settings.Summary.TimeoutSeconds);
+        Assert.Equal(0, settings.Summary.LengthLimit);
+        Assert.Equal(ReadingPreference.Summary, settings.Summary.DefaultReading);
         Assert.Equal(SummarySettingsDto.DefaultSystemPrompt, settings.Summary.SystemPrompt);
         await restarted.DisposeAsync();
     }
@@ -227,6 +239,153 @@ public class SummaryTests
 
         var badAddress = await client.ProbeSummaryAsync("ftp://x", "qwen3:8b", null);
         Assert.Equal(ProtocolErrors.InvalidArgument, badAddress.Error);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task ShortText_IsReadAsIs_AndALongerOneIsRetold()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var answer = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var http = new StubHttpHandler((_, _, _) => answer.Task);
+        var host = await TestHost.StartAsync(root.Path, tts, http);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            Enabled = true,
+            Endpoint = Enabled.Endpoint,
+            Model = Enabled.Model,
+            TimeoutSeconds = Enabled.TimeoutSeconds,
+            LengthLimit = 10,
+            DefaultReading = ReadingPreference.Summary,
+        })).Ok);
+
+        var shortText = new string('а', 10);
+        var brief = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "short", shortText));
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == brief.Id);
+        Assert.Equal("Cursor.\n" + shortText + ".", tts.Text);
+        Assert.Empty(http.Requests);
+        tts.Complete();
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Idle);
+
+        var longText = new string('б', 11);
+        var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "long", longText));
+        Assert.Null(tts.UtteranceId);
+        answer.SetResult(StubHttpHandler.Chat("Суть готова."));
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
+        Assert.Equal("Cursor.\nСуть готова.", tts.Text);
+        Assert.Single(http.Requests);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task DefaultReading_PicksTheRetelling_AndTheToastCanSwitch()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var http = new StubHttpHandler((_, _, _) => Task.FromResult(StubHttpHandler.Chat("Суть готова.")));
+        var host = await TestHost.StartAsync(root.Path, tts, http);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        Assert.True((await client.SetModeAsync(PlaybackMode.Confirm)).Ok);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            Enabled = true,
+            Endpoint = Enabled.Endpoint,
+            Model = Enabled.Model,
+            TimeoutSeconds = Enabled.TimeoutSeconds,
+            LengthLimit = 0,
+            DefaultReading = ReadingPreference.Summary,
+        })).Ok);
+
+        const string Original = "**длинный** ответ, который надо пересказать целиком";
+        var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", Original));
+        var shown = await log.TakeAsync<ConfirmationRequestedEvent>(confirmation => confirmation.Item.Id == accepted.Id);
+        Assert.True(shown.Item.HasSummary);
+        Assert.True(shown.Item.ReadSummary);
+        Assert.Equal("Суть готова.", shown.Item.Speech);
+        Assert.Null(tts.UtteranceId);
+
+        Assert.Equal(ProtocolErrors.NotFound, (await client.SelectReadingAsync("missing", false)).Error);
+        Assert.True((await client.SelectReadingAsync(accepted.Id!, false)).Ok);
+        var full = (await client.GetSnapshotAsync()).Snapshot!.Confirmation!;
+        Assert.True(full.HasSummary);
+        Assert.False(full.ReadSummary);
+        Assert.Equal("длинный ответ, который надо пересказать целиком.", full.Speech);
+
+        Assert.True((await client.SelectReadingAsync(accepted.Id!, true)).Ok);
+        Assert.True((await client.GetSnapshotAsync()).Snapshot!.Confirmation!.ReadSummary);
+        Assert.True((await client.ListenAsync(accepted.Id!)).Ok);
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
+        Assert.Equal("Cursor.\nСуть готова.", tts.Text);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task MissingRetelling_FallsBackToTheFullText()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var http = new StubHttpHandler((_, _, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        var host = await TestHost.StartAsync(root.Path, tts, http);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        Assert.True((await client.SetModeAsync(PlaybackMode.Confirm)).Ok);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            Enabled = true,
+            Endpoint = Enabled.Endpoint,
+            Model = Enabled.Model,
+            TimeoutSeconds = Enabled.TimeoutSeconds,
+            LengthLimit = 0,
+            DefaultReading = ReadingPreference.Summary,
+        })).Ok);
+
+        var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", "короткий ответ"));
+        var shown = await log.TakeAsync<ConfirmationRequestedEvent>(confirmation => confirmation.Item.Id == accepted.Id);
+        Assert.False(shown.Item.HasSummary);
+        Assert.False(shown.Item.ReadSummary);
+        Assert.Equal("короткий ответ.", shown.Item.Speech);
+        Assert.Equal(ProtocolErrors.InvalidState, (await client.SelectReadingAsync(accepted.Id!, true)).Error);
+
+        Assert.True((await client.ListenAsync(accepted.Id!)).Ok);
+        await log.TakeAsync<PlayerStateEvent>(state => state.State == PlayerState.Speaking && state.ItemId == accepted.Id);
+        Assert.Equal("Cursor.\nкороткий ответ.", tts.Text);
+        await host.DisposeAsync();
+    }
+
+    [Fact(Timeout = 20000)]
+    public async Task FullTextPreference_SpeaksTheOriginal_UntilSwitched()
+    {
+        await using var root = new TempRoot();
+        var tts = new ManualTtsEngine();
+        var http = new StubHttpHandler((_, _, _) => Task.FromResult(StubHttpHandler.Chat("Суть готова.")));
+        var host = await TestHost.StartAsync(root.Path, tts, http);
+        await using var client = await host.ConnectInProcessAsync();
+        var log = EventLog.Pump(client);
+        Assert.True((await client.SetModeAsync(PlaybackMode.Confirm)).Ok);
+        Assert.True((await client.UpdateSettingsAsync(summary: new SummarySettingsDto
+        {
+            Enabled = true,
+            Endpoint = Enabled.Endpoint,
+            Model = Enabled.Model,
+            TimeoutSeconds = Enabled.TimeoutSeconds,
+            LengthLimit = 0,
+            DefaultReading = ReadingPreference.Full,
+        })).Ok);
+
+        var accepted = await IngestClient.SubmitAsync(host.IngestSocketPath, new SpeechDraft("cursor", "g", "полный текст ответа"));
+        var shown = await log.TakeAsync<ConfirmationRequestedEvent>(confirmation => confirmation.Item.Id == accepted.Id);
+        Assert.True(shown.Item.HasSummary);
+        Assert.False(shown.Item.ReadSummary);
+        Assert.Equal("полный текст ответа.", shown.Item.Speech);
+
+        Assert.True((await client.SelectReadingAsync(accepted.Id!, true)).Ok);
+        var summary = (await client.GetSnapshotAsync()).Snapshot!.Confirmation!;
+        Assert.True(summary.ReadSummary);
+        Assert.Equal("Суть готова.", summary.Speech);
         await host.DisposeAsync();
     }
 }

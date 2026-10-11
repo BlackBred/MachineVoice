@@ -86,6 +86,17 @@ public enum TtsEngineKind
     OmniVoice,
 }
 
+/// <summary>Which text is read when a response has both the original and a retelling.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ReadingPreference>))]
+public enum ReadingPreference
+{
+    [JsonStringEnumMemberName("full")]
+    Full,
+
+    [JsonStringEnumMemberName("summary")]
+    Summary,
+}
+
 /// <summary>What a probe of an OpenAI-compatible <c>/models</c> endpoint found.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<SummaryProbeStatus>))]
 public enum SummaryProbeStatus

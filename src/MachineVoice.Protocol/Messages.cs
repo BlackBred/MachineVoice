@@ -48,6 +48,17 @@ public sealed class ListenCommand : ClientMessage
 }
 
 /// <summary>
+/// Chooses the full text or the retelling for a waiting response. The toast uses it before «Слушать».
+/// Asking for a retelling that was not created is rejected.
+/// </summary>
+public sealed class SelectReadingCommand : ClientMessage
+{
+    public string Type { get; init; } = "selectReading";
+    public string ItemId { get; init; } = "";
+    public bool ReadSummary { get; init; }
+}
+
+/// <summary>
 /// Puts <see cref="Text"/> into the inbox as a clipboard reading. The pasteboard is never written.
 /// The file joins the queue, unless nothing is playing or interruption is turned on.
 /// </summary>

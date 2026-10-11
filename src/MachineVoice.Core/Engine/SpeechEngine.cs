@@ -240,7 +240,7 @@ sealed class SpeechEngine : IAsyncDisposable
                 OnCompleted(completed.UtteranceId);
                 break;
             case PreparedWork prepared:
-                OnPrepared(prepared.ItemId, prepared.Speech);
+                OnPrepared(prepared.ItemId, prepared.FullSpeech, prepared.SummarySpeech);
                 break;
             case SignalWork signal:
                 signal.Action();
@@ -482,39 +482,39 @@ sealed class SpeechEngine : IAsyncDisposable
     IQueuePolicy Policy => _order == QueueOrder.Lifo ? Lifo : Fifo;
 
     /// <summary>
-    /// Runs the text pipeline. Rules finish synchronously; with an LLM step the result arrives later as
-    /// <see cref="PreparedWork"/>, and the summarizer's own timeout bounds how long the queue head waits.
+    /// Rules finish synchronously. A retelling is requested only past the length limit, and the item stays
+    /// unspoken until it arrives or fails; the summarizer's own timeout bounds that wait. The clipboard is
+    /// what the user asked to hear, so it is never retold.
     /// </summary>
     void Prepare(SpeechItem item)
     {
-        // Clipboard text is what the user asked to hear. A retelling would replace it.
-        if (string.Equals(item.Source, SpeakClipboardCommand.Source, StringComparison.Ordinal))
-        {
-            item.Speech = RulesOf(item);
-            return;
-        }
-
-        var pipeline = LlmSummarizer.IsUsable(_settings.Summary)
-            ? TextPipeline.WithSummary(new LlmSummarizer(_http, _settings.Summary, _log))
-            : TextPipeline.Rules();
         var context = new SpeechContext(item.Source, item.Project, item.Topic);
-
-        var run = pipeline.RunAsync(item.Text, context, _shutdown.Token);
-        if (run.IsCompletedSuccessfully)
+        var full = RulesOf(item.Text, context);
+        if (!Retell(item))
         {
-            item.Speech = run.Result;
+            StoreReading(item, full, null);
             return;
         }
 
-        _ = FinishPrepareAsync(item, run);
+        var settings = _settings.Summary;
+        _ = FinishPrepareAsync(item.Id, item.Text, full, settings, context);
     }
 
-    async Task FinishPrepareAsync(SpeechItem item, ValueTask<string> run)
+    bool Retell(SpeechItem item) =>
+        !string.Equals(item.Source, SpeakClipboardCommand.Source, StringComparison.Ordinal)
+        && LlmSummarizer.IsUsable(_settings.Summary)
+        && item.Text.Length > _settings.Summary.LengthLimit;
+
+    async Task FinishPrepareAsync(string itemId, string text, string full, SummarySettingsDto settings, SpeechContext context)
     {
-        string speech;
+        string? summary = null;
         try
         {
-            speech = await run.ConfigureAwait(false);
+            var raw = await new LlmSummarizer(_http, settings, _log)
+                .SummarizeAsync(text, context, _shutdown.Token)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(raw))
+                summary = RulesOf(raw, context);
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
@@ -523,16 +523,15 @@ sealed class SpeechEngine : IAsyncDisposable
         catch (Exception ex)
         {
             _log?.Invoke($"Text pipeline failed: {ex.Message}");
-            speech = item.Text;
         }
 
-        Post(new PreparedWork(item.Id, speech));
+        Post(new PreparedWork(itemId, full, string.IsNullOrWhiteSpace(summary) ? null : summary));
     }
 
     /// <summary>The rule steps only. They finish synchronously; a failure keeps the original text.</summary>
-    string RulesOf(SpeechItem item)
+    string RulesOf(string text, SpeechContext context)
     {
-        var run = TextPipeline.Rules().RunAsync(item.Text, new SpeechContext(item.Source, item.Project, item.Topic));
+        var run = TextPipeline.Rules().RunAsync(text, context);
         if (run.IsCompletedSuccessfully)
             return run.Result;
 
@@ -543,17 +542,28 @@ sealed class SpeechEngine : IAsyncDisposable
         catch (Exception ex)
         {
             _log?.Invoke($"Text rules failed: {ex.Message}");
-            return item.Text;
+            return text;
         }
     }
 
-    void OnPrepared(string itemId, string speech)
+    /// <summary>
+    /// Keeps both texts and picks the one the settings ask for. A missing retelling always leaves the full text.
+    /// </summary>
+    void StoreReading(SpeechItem item, string full, string? summary)
+    {
+        item.FullSpeech = full;
+        item.SummarySpeech = string.IsNullOrWhiteSpace(summary) ? null : summary;
+        item.ReadSummary = _settings.Summary.DefaultReading == ReadingPreference.Summary && item.SummarySpeech is not null;
+        item.Speech = item.ReadSummary ? item.SummarySpeech : item.FullSpeech;
+    }
+
+    void OnPrepared(string itemId, string full, string? summary)
     {
         var item = _queue.Find(candidate => candidate.Id == itemId);
         if (item is null || item.Speech is not null)
             return;
 
-        item.Speech = speech;
+        StoreReading(item, full, summary);
         _byId[item.Id] = ToDto(item);
         PublishQueue();
         Advance();
@@ -582,6 +592,7 @@ sealed class SpeechEngine : IAsyncDisposable
             SetPlaybackRateCommand setRate => ApplyPlaybackRate(command.Id, setRate.Rate),
             SeekCommand seek => Seek(command.Id, seek.Position),
             ListenCommand listen => Listen(command.Id, listen.ItemId),
+            SelectReadingCommand select => SelectReading(command.Id, select.ItemId, select.ReadSummary),
             SpeakClipboardCommand clipboard => SpeakClipboard(command.Id, clipboard.Text),
             DismissCommand dismiss => Dismiss(command.Id, dismiss.ItemId),
             OpenChatCommand open => OpenChat(command.Id, open.ItemId),
@@ -902,6 +913,28 @@ sealed class SpeechEngine : IAsyncDisposable
 
         _hold = false;
         BeginSpeak(item);
+        return Ok(id);
+    }
+
+    /// <summary>Switches a waiting response between the full text and the retelling. The one being read is left as it is.</summary>
+    ResultMessage SelectReading(string id, string itemId, bool readSummary)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+            return Fail(id, ProtocolErrors.InvalidArgument);
+        var item = _queue.Find(candidate => candidate.Id == itemId);
+        if (item is null)
+            return Fail(id, ProtocolErrors.NotFound);
+        if (item.Speech is null || item.FullSpeech is null)
+            return Fail(id, ProtocolErrors.InvalidState);
+        if (readSummary && item.SummarySpeech is null)
+            return Fail(id, ProtocolErrors.InvalidState);
+        if (item.ReadSummary == readSummary)
+            return Ok(id);
+
+        item.ReadSummary = readSummary;
+        item.Speech = readSummary ? item.SummarySpeech : item.FullSpeech;
+        _byId[item.Id] = ToDto(item);
+        PublishQueue();
         return Ok(id);
     }
 
@@ -1565,6 +1598,8 @@ sealed class SpeechEngine : IAsyncDisposable
         Topic = item.Topic,
         Text = item.Text,
         Speech = item.Speech,
+        HasSummary = item.SummarySpeech is not null,
+        ReadSummary = item.ReadSummary,
         ReceivedAt = item.ReceivedAt,
     };
 
@@ -1655,10 +1690,11 @@ sealed class SpeechEngine : IAsyncDisposable
         public string UtteranceId { get; } = utteranceId;
     }
 
-    sealed class PreparedWork(string itemId, string speech) : Work
+    sealed class PreparedWork(string itemId, string fullSpeech, string? summarySpeech) : Work
     {
         public string ItemId { get; } = itemId;
-        public string Speech { get; } = speech;
+        public string FullSpeech { get; } = fullSpeech;
+        public string? SummarySpeech { get; } = summarySpeech;
     }
 
     sealed class SignalWork(Action action, TaskCompletionSource done) : Work

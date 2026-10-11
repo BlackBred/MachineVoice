@@ -31,6 +31,13 @@ public sealed partial class LlmSummarizer : ITextProcessor
 
     public async ValueTask<string> ProcessAsync(string text, SpeechContext context, CancellationToken cancellationToken)
     {
+        var summary = await SummarizeAsync(text, context, cancellationToken).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(summary) ? text : summary;
+    }
+
+    /// <summary>The retelling, or null when the model did not produce one. The caller keeps the original text.</summary>
+    public async ValueTask<string?> SummarizeAsync(string text, SpeechContext context, CancellationToken cancellationToken)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(_settings.TimeoutSeconds));
         try
@@ -49,7 +56,7 @@ public sealed partial class LlmSummarizer : ITextProcessor
             _log?.Invoke($"Summary failed, using the rules: {ex.Message}");
         }
 
-        return text;
+        return null;
     }
 
     async Task<string?> RequestAsync(string text, SpeechContext context, CancellationToken cancellationToken)
@@ -108,6 +115,10 @@ static class SummaryRules
             return ProtocolErrors.InvalidArgument;
         if ((settings.SystemPrompt?.Trim().Length ?? 0) > SummarySettingsDto.MaxSystemPrompt)
             return ProtocolErrors.InvalidArgument;
+        if (settings.LengthLimit is < 0 or > SummarySettingsDto.MaxLengthLimit)
+            return ProtocolErrors.InvalidArgument;
+        if (!Enum.IsDefined(settings.DefaultReading))
+            return ProtocolErrors.InvalidArgument;
         if (settings.Enabled && string.IsNullOrWhiteSpace(settings.Model))
             return ProtocolErrors.InvalidArgument;
         return null;
@@ -137,6 +148,8 @@ static class SummaryRules
         Model = settings.Model?.Trim() ?? "",
         ApiKey = string.IsNullOrWhiteSpace(settings.ApiKey) ? null : settings.ApiKey.Trim(),
         TimeoutSeconds = settings.TimeoutSeconds,
+        LengthLimit = settings.LengthLimit,
+        DefaultReading = settings.DefaultReading,
         SystemPrompt = Prompt(settings),
     };
 }
